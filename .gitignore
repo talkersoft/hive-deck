@@ -1,0 +1,37 @@
+# Per-machine config and personal decks live in .hive/ — never committed.
+# The .example templates ARE committed (setup.yaml.example).
+.hive/*
+!.hive/*.example
+
+# Compiled binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go test + coverage
+*.test
+*.out
+coverage.html
+
+# Go workspace files (per-machine)
+go.work
+go.work.sum
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local config
+.claude/
+
+# hv-managed (added by hv deck provision — idempotent)
+*.md
+!README.md

@@ -1,0 +1,53 @@
+# Per-machine setup. Copy to setup.yaml (gitignored) and edit for your machine.
+# Defines where to provision, how to talk to git hosts, and any branch overrides.
+
+decks_root: ~/hive   # base folder where each deck folder is created
+
+orgs:                          # one entry per GitHub org you clone from
+  <org-key>:                   # short name referenced by `org:` in your manifests
+    url: github.com/<your-github-org>
+    protocol: https            # ssh | https
+  # personal:                  # example: your personal GitHub username
+  #   url: github.com/<your-github-username>
+  #   protocol: https
+  # <another-org-key>:
+  #   url: github.com/<another-github-org>
+  #   protocol: ssh
+
+# Default branch applied to every cloned repo unless overridden below.
+default_branch: main
+
+# Per-repo branch overrides — only list repos that differ from default_branch.
+branches: {}
+  # <repo-name>: <branch-name>
+
+# Optional: write a .gitignore at each workspace and system directory.
+# Applied idempotently — existing lines are never duplicated.
+# Defaults: .claude/, *.md, !README.md (used when entries is omitted or empty).
+gitignore:
+  entries:
+    - .claude/
+    - "*.md"
+    - "!README.md"
+
+# Optional: create a minimal README.md in each workspace and system directory.
+# Existing README.md files are never overwritten.
+readme:
+  enabled: false
+
+# Optional: drop a .claude/settings.local.json into every cloned repo so Claude
+# Code picks up project-local permissions without per-repo setup. Existing
+# files are never overwritten — hv only writes when the file is absent.
+claude_settings:
+  enabled: false               # flip to true to enable per-repo provisioning
+  allow:                       # permission patterns merged into permissions.allow (existing entries preserved)
+    - "*"
+    - "Bash(*)"
+    - "Edit(*)"
+    - "Write(*)"
+    - "Read(*)"
+    - "Glob(*)"
+    - "Grep(*)"
+    - "WebFetch(*)"
+    - "WebSearch(*)"
+  default_mode: bypassPermissions    # optional; "bypassPermissions" if omitted
