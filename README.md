@@ -177,8 +177,7 @@ A VS Code `.code-workspace` file is generated at `<decks_root>/<deck>/hive-works
 ## Usage
 
 ```sh
-hv deck provision <deck>                       # strict: clone every repo; fails if any exist on disk
-hv deck provision <deck> --clone-missing       # additive: clone only absent repos
+hv deck provision <deck>                       # idempotent: clone missing, restore shells, skip existing
 hv deck provision <deck> --filter <node>       # provision only the subtree rooted at <node>
 hv deck teardown  <deck> [--filter <node>]     # remove tracked files + .git/; preserve untracked
 hv deck status    <deck> [--filter <node>]     # report git state across in-scope repos
@@ -188,15 +187,13 @@ hv deck decks                                  # list all deck files in the acti
 
 ### provision
 
-GitHub create-if-missing is always on: for each repo absent locally, hv checks via `gh repo view` whether the GitHub repo exists; if not, `gh repo create --private --add-readme` runs before the clone.
+Idempotent — safe to run any number of times. For each declared repo:
 
-Two modes:
+- absent → clone
+- dir present, `.git/` absent (shell left by teardown) → restore in place: clone into temp, then `rsync -a --ignore-existing` so preserved untracked files stay put
+- dir present, `.git/` present → skip
 
-- **Default (strict)** — fails if any declared repo dir already exists on disk.
-- **`--clone-missing`** — additive; for each declared repo:
-  - absent → clone
-  - dir present, `.git/` absent (shell left by surgical teardown) → restore in place: clone into temp, then `rsync -a --ignore-existing` so preserved untracked files stay put
-  - dir present, `.git/` present → skip
+GitHub create-if-missing is always on: for each repo that doesn't yet exist on github.com, `gh repo create --private --add-readme` runs before the clone.
 
 ### teardown
 

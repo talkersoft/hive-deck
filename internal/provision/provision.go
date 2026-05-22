@@ -1,9 +1,7 @@
-// Package provision implements `hv deck provision <deck> [--filter <node>]` in
-// both default (strict) and --clone-missing (additive) modes.
-//
-// The deck is the unit of work. With no filter, every repo in the deck
-// tree is provisioned as one transaction. With --filter, only the matching
-// subtree is in scope.
+// Package provision implements `hv deck provision <deck> [--filter <node>]`.
+// Provision is idempotent: missing repos are cloned, shell dirs (no .git/) are
+// restored in place, and already-cloned repos are skipped. Run it any number
+// of times — the result is always a fully provisioned deck.
 //
 // GitHub create-if-missing is always on: for each repo that doesn't yet exist
 // on github.com, `gh repo create --private --add-readme` runs before the clone.
@@ -32,9 +30,8 @@ import (
 )
 
 type Options struct {
-	Filter       string // node name filter (empty = all)
-	CloneMissing bool
-	Out          io.Writer
+	Filter string // node name filter (empty = all)
+	Out    io.Writer
 }
 
 func Run(l *config.Loaded, opts Options) error {
@@ -64,63 +61,10 @@ func Run(l *config.Loaded, opts Options) error {
 		return fmt.Errorf("hv deck provision only supports github.com orgs; the following repos resolve to other hosts:\n  %s", strings.Join(nonGitHub, "\n  "))
 	}
 
-	if opts.CloneMissing {
-		return runFill(plan, l, opts)
-	}
-	return runFresh(plan, l, opts)
+	return runProvision(plan, l, opts)
 }
 
-// ── strict (fresh) mode ─────────────────────────────────────────────────────
-
-func runFresh(plan *resolve.Plan, l *config.Loaded, opts Options) (err error) {
-	var existing []string
-	for _, r := range plan.Repos {
-		ex, err := dirExists(r.Dest)
-		if err != nil {
-			return err
-		}
-		if ex {
-			existing = append(existing, r.Dest)
-		}
-	}
-	if len(existing) > 0 {
-		return fmt.Errorf("repo dir(s) already exist:\n  %s\n— use --clone-missing to add only the absent repos (or remove these dirs first)", strings.Join(existing, "\n  "))
-	}
-
-	fmt.Fprintf(opts.Out, "provision (fresh): %s repos=%d\n", plan.Deck, len(plan.Repos))
-
-	tx := &tx{out: opts.Out}
-	defer func() {
-		if err != nil {
-			tx.rollback()
-		}
-	}()
-
-	if err = ensureFolders(plan, l.Setup); err != nil {
-		return err
-	}
-	if err = claude.MaybeWrite(filepath.Dir(plan.DeckDir), l.Setup.ClaudeSettings); err != nil {
-		return err
-	}
-	if err = claude.MaybeWrite(plan.DeckDir, l.Setup.ClaudeSettings); err != nil {
-		return err
-	}
-	if err = applySymlinks(plan, opts.Out); err != nil {
-		return err
-	}
-	if err = cloneRepos(plan.Repos, opts.Out, tx, l.Setup); err != nil {
-		return err
-	}
-	if err = workspace.Regenerate(plan, l); err != nil {
-		return err
-	}
-	fmt.Fprintln(opts.Out, "regenerated .code-workspace file")
-	return nil
-}
-
-// ── --clone-missing (additive) mode ─────────────────────────────────────────
-
-func runFill(plan *resolve.Plan, l *config.Loaded, opts Options) (err error) {
+func runProvision(plan *resolve.Plan, l *config.Loaded, opts Options) (err error) {
 	var missing, restore []resolve.RepoPlan
 	for _, r := range plan.Repos {
 		ex, err := dirExists(r.Dest)
@@ -140,7 +84,7 @@ func runFill(plan *resolve.Plan, l *config.Loaded, opts Options) (err error) {
 		}
 	}
 
-	fmt.Fprintf(opts.Out, "provision (clone-missing): %s missing=%d restore=%d total=%d\n", plan.Deck, len(missing), len(restore), len(plan.Repos))
+	fmt.Fprintf(opts.Out, "provision: %s missing=%d restore=%d total=%d\n", plan.Deck, len(missing), len(restore), len(plan.Repos))
 
 	// Always run workspace-level setup (idempotent) even if no repos are missing.
 	if err = ensureFolders(plan, l.Setup); err != nil {

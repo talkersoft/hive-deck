@@ -64,18 +64,19 @@ files + .git/ go, untracked files stay.`,
 
 func provisionCmd() *cobra.Command {
 	var filter string
-	var cloneMissing bool
 	cmd := &cobra.Command{
-		Use:   "provision <workspace> [--filter <node>]",
-		Short: "Clone every repo in the workspace as one transaction",
-		Long: `Clone every declared repo for the in-scope workspace (or a filtered subtree).
+		Use:   "provision <deck> [--filter <node>]",
+		Short: "Provision every repo in the deck (idempotent)",
+		Long: `Provision every declared repo for the in-scope deck (or a filtered subtree).
+
+Idempotent — safe to run any number of times:
+  missing repo     → cloned
+  dir without .git → restored in place (untracked files preserved)
+  already cloned   → skipped
 
 GitHub create-if-missing is always on: for each repo that doesn't yet exist
 on github.com, ` + "`gh repo create --private --add-readme`" + ` runs before the clone.
-The ` + "`gh`" + ` CLI is a hard runtime dependency.
-
-Default (strict): fails if any declared repo dir already exists on disk.
---clone-missing: additive — clones only the absent repos.`,
+The ` + "`gh`" + ` CLI is a hard runtime dependency.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			l, err := config.LoadDeck(args[0])
@@ -83,13 +84,11 @@ Default (strict): fails if any declared repo dir already exists on disk.
 				return err
 			}
 			return provision.Run(l, provision.Options{
-				Filter:       filter,
-				CloneMissing: cloneMissing,
+				Filter: filter,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&filter, "filter", "", "provision only the subtree rooted at a node with this name")
-	cmd.Flags().BoolVar(&cloneMissing, "clone-missing", false, "additive mode: clone only repos that don't yet exist on disk")
 	return cmd
 }
 
