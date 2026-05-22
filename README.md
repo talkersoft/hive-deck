@@ -8,6 +8,8 @@ Give an AI agent a deck file and a single command — it provisions the entire m
 
 `hv` is a small Go CLI that provisions and tears down on-disk developer workspaces from a YAML deck file. It's designed automation-first: drop a `.hive/` directory alongside any payload (a repo, a CI job, an agent working directory) and `hv` will use it without touching your global config. Deck files are the only input — `hv` never writes to YAML.
 
+Teardown is a first-class signal in agentic pipelines. `hv deck teardown` refuses to run if any repo has uncommitted changes, unpushed commits, or unresolved state — so a successful teardown means the agent finished its work and pushed everything. A failed teardown means it didn't. Pair this with `--clone-missing` on the next provision to restore the workspace from scratch: provision → agent works → teardown as completion check → reprovision for the next run.
+
 ## Requirements
 
 - Go 1.22+
