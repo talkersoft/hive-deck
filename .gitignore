@@ -35,3 +35,4 @@ Thumbs.db
 # hv-managed (added by hv deck provision — idempotent)
 *.md
 !README.md
+!docs/*.md
