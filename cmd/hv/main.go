@@ -12,6 +12,8 @@ import (
 
 	"github.com/talkersoft/hive-deck/internal/config"
 	"github.com/talkersoft/hive-deck/internal/provision"
+	"github.com/talkersoft/hive-deck/internal/prune"
+	"github.com/talkersoft/hive-deck/internal/sync"
 	"github.com/talkersoft/hive-deck/internal/teardown"
 )
 
@@ -53,7 +55,9 @@ files + .git/ go, untracked files stay.`,
 
 	deck.AddCommand(
 		provisionCmd(),
+		syncCmd(),
 		teardownCmd(),
+		pruneCmd(),
 		statusCmd(),
 		listCmd(),
 		decksCmd(),
@@ -116,6 +120,53 @@ There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`
 		},
 	}
 	cmd.Flags().StringVar(&filter, "filter", "", "teardown only the subtree rooted at a node with this name")
+	return cmd
+}
+
+func syncCmd() *cobra.Command {
+	var filter string
+	cmd := &cobra.Command{
+		Use:   "sync <workspace>",
+		Short: "Pull every in-scope repo after verifying all are clean",
+		Long: `Sync verifies every in-scope repo is clean (committed and pushed), then
+runs git pull on each one. Aborts before touching anything if any repo
+has uncommitted changes, unpushed commits, or stash entries.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			return sync.Run(l, sync.Options{Filter: filter})
+		},
+	}
+	cmd.Flags().StringVar(&filter, "filter", "", "sync only the subtree rooted at a node with this name")
+	return cmd
+}
+
+func pruneCmd() *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "prune <workspace>",
+		Short: "Remove on-disk repos not declared in the deck",
+		Long: `Prune finds every git repo under the deck directory that is not declared
+in the deck YAML. It runs in three steps:
+
+  1. Identify all undeclared repos on disk
+  2. Verify every undeclared repo is clean (committed and pushed)
+  3. Remove them — aborts if any are dirty
+
+Use --dry-run to preview what would be removed without removing anything.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			return prune.Run(l, prune.Options{DryRun: dryRun})
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be removed without removing anything")
 	return cmd
 }
 

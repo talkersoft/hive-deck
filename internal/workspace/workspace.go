@@ -5,13 +5,12 @@
 //
 //	<workspaces_root>/launch/<workspace>.code-workspace
 //
-// The file's folders[] contains one entry per repo on disk, followed by any
-// workspace_folder: true nodes on disk (checked via Lstat so broken symlinks
-// don't disappear), with a final "." entry pointing at the launch folder itself.
-// The "." entry must stay last (idempotency contract).
+// The file's folders[] contains one entry per repo on disk, with a final "."
+// entry pointing at the launch folder itself. The "." entry must stay last
+// (idempotency contract).
 //
-// Regenerate is called once at the end of every provision/teardown run.
-// When zero repos and workspace folders remain on disk, the file is removed.
+// Regenerate is called once at the end of every provision/teardown/prune run.
+// When zero repos remain on disk, the file is removed.
 // The launch directory is created on demand and never removed by teardown.
 package workspace
 
@@ -35,8 +34,8 @@ type file struct {
 
 // Regenerate writes (or removes) the workspace-level .code-workspace file at
 // <workspaces_root>/launch/<workspace>.code-workspace. It re-derives all repos
-// and workspace_folder nodes from the full workspace tree (not just the in-scope
-// filter) so the file always reflects the complete on-disk state.
+// from the full workspace tree (not just the in-scope filter) so the file
+// always reflects the complete on-disk state.
 func Regenerate(plan *resolve.Plan, l *config.Loaded) error {
 	allRepos, err := resolve.AllRepos(l)
 	if err != nil {
@@ -49,18 +48,7 @@ func Regenerate(plan *resolve.Plan, l *config.Loaded) error {
 		}
 	}
 
-	wsFolders, err := resolve.AllWorkspaceFolders(l)
-	if err != nil {
-		return err
-	}
-	var wsFoldersOnDisk []string
-	for _, dir := range wsFolders {
-		if _, err := os.Lstat(dir); err == nil {
-			wsFoldersOnDisk = append(wsFoldersOnDisk, dir)
-		}
-	}
-
-	if len(onDisk) == 0 && len(wsFoldersOnDisk) == 0 {
+	if len(onDisk) == 0 {
 		return removeIfExists(plan.LaunchFile)
 	}
 
@@ -68,21 +56,13 @@ func Regenerate(plan *resolve.Plan, l *config.Loaded) error {
 		return err
 	}
 
-	f := file{Folders: make([]folder, 0, len(onDisk)+len(wsFoldersOnDisk)+1)}
+	f := file{Folders: make([]folder, 0, len(onDisk)+1)}
 	for _, r := range onDisk {
 		rel, err := filepath.Rel(plan.LaunchDir, r.Dest)
 		if err != nil {
 			return err
 		}
 		f.Folders = append(f.Folders, folder{Name: r.Repo, Path: rel})
-	}
-
-	for _, dir := range wsFoldersOnDisk {
-		rel, err := filepath.Rel(plan.LaunchDir, dir)
-		if err != nil {
-			return err
-		}
-		f.Folders = append(f.Folders, folder{Name: filepath.Base(dir), Path: rel})
 	}
 
 	// Launch folder itself — sidebar entry listing .code-workspace files.
