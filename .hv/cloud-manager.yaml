@@ -1,0 +1,33 @@
+deck:
+  config:
+    symlinks:
+      - ~/.hv
+    workspace_folder: true
+  planning:
+    workspace_folder: true
+    repos:
+      - talkersoft-com/planning
+      - talkersoft-com/execution-workflow
+  tools:
+    workspace_folder: true
+    repos:
+      - talkersoft-com/hive-deck-pro
+      - talkersoft-com/hive-mission-control
+      - talkersoft-com/mcp-manager
+      - talkersoft-com/database-toolkit
+  vm-infra:
+    repos:
+      - talkersoft-com/secret-management
+    cloud-manager:
+      modules: [cloud-manager, vorch, provisioning]
+      repos:
+        - talkersoft-com/rentpittsburgh-city
+        - talkersoft-com/cloud-manager-mcp
+  ai-infra:
+    repos:
+      - talkersoft-com/dgx-spark
+  os-images:
+    repos:
+      - talkersoft-com/disk-imaging
+      - talkersoft-com/ubuntu-server
+      - talkersoft-com/ubuntu-desktop-24.04
