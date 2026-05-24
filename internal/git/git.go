@@ -12,6 +12,18 @@ import (
 	"strings"
 )
 
+// Pull performs `git pull` in the repo at dir, streaming output to the caller.
+func Pull(dir string) error {
+	cmd := exec.Command("git", "pull")
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git pull in %s: %w", dir, err)
+	}
+	return nil
+}
+
 // Clone performs `git clone --branch <branch> <url> <dest>`.
 // Streams git's output to the caller's stdout/stderr.
 func Clone(url, branch, dest string) error {
