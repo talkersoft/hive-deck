@@ -1,4 +1,4 @@
-// Package config loads and validates the active deck file and ~/.hive/setup.yaml.
+// Package config loads and validates the active deck file and ~/.hv/config.yaml.
 package config
 
 import (
@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	ConfigDir   = ".hive"
-	SetupFile   = "setup.yaml"
+	ConfigDir   = ".hv"
+	SetupFile   = "config.yaml"
 	ModulesFile = "modules.yaml"
 	LaunchDir   = "hive-workspace"
 )
@@ -210,7 +210,7 @@ func resolveDeckPath(name string) (path, stem string, err error) {
 		return "", "", err
 	}
 	if p == "" {
-		return "", "", fmt.Errorf("deck %q not found — looked for %s in .hive/ under CWD then $HOME", name, filename)
+		return "", "", fmt.Errorf("deck %q not found — looked for %s in .hv/ under CWD then $HOME", name, filename)
 	}
 	s := strings.TrimSuffix(filename, ".yaml")
 	return p, s, nil
@@ -225,18 +225,18 @@ func FindHome() (string, error) {
 	}
 	if p == "" {
 		h, _ := os.UserHomeDir()
-		return "", fmt.Errorf("%s/.hive/%s not found — run 'make install' from the hive-deck checkout to populate it (or set $HV_HOME to point at a directory containing .hive/)", h, SetupFile)
+		return "", fmt.Errorf("%s/.hv/%s not found — run 'make install' from the hive-deck checkout to populate it (or set $HV_HOME to point at a directory containing .hv/)", h, SetupFile)
 	}
-	// <home>/.hive/setup.yaml → strip filename → strip .hive/ → home
+	// <home>/.hv/config.yaml → strip filename → strip .hv/ → home
 	return filepath.Dir(filepath.Dir(p)), nil
 }
 
-// findConfigFile looks for <filename> inside a .hive/ directory using this
+// findConfigFile looks for <filename> inside a .hv/ directory using this
 // search order:
 //
-//  1. $HV_HOME/.hive/<filename>  — explicit dev/CI override (errors if set but missing)
-//  2. <CWD>/.hive/<filename>     — project-local config wins when present
-//  3. $HOME/.hive/<filename>     — global user install fallback
+//  1. $HV_HOME/.hv/<filename>  — explicit dev/CI override (errors if set but missing)
+//  2. <CWD>/.hv/<filename>     — project-local config wins when present
+//  3. $HOME/.hv/<filename>     — global user install fallback
 //
 // Returns ("", nil) when the file is not found in any location (not an error
 // by itself — callers decide how to handle absence). Returns a non-nil error
@@ -290,7 +290,7 @@ func loadSetup(path string) (Setup, error) {
 	var s Setup
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return s, fmt.Errorf("read %s: %w (run 'make setup' to scaffold from .hive/setup.yaml.example)", path, err)
+		return s, fmt.Errorf("read %s: %w (run 'make setup' to scaffold from .hv/config.yaml.example)", path, err)
 	}
 	if err := yaml.Unmarshal(b, &s); err != nil {
 		return s, fmt.Errorf("parse %s: %w", path, err)

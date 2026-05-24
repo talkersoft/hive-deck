@@ -1,5 +1,5 @@
 // Package claude provisions per-repo .claude/settings.local.json files when
-// the setup.yaml enables it. The write is idempotent: if the file already
+// the config.yaml enables it. The write is idempotent: if the file already
 // exists its content is merged with the configured settings rather than
 // overwritten — unknown keys and user-added entries are always preserved.
 package claude

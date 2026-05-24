@@ -17,10 +17,10 @@ func (l *Loaded) ValidateDeck() error {
 		return fmt.Errorf("deck %q: deck: tree is empty", l.DeckName)
 	}
 	if l.Setup.DecksRoot == "" {
-		return fmt.Errorf("decks_root is not set in ~/.hive/setup.yaml")
+		return fmt.Errorf("decks_root is not set in ~/.hv/config.yaml")
 	}
 	if l.Setup.DefaultBranch == "" {
-		return fmt.Errorf("default_branch is not set in ~/.hive/setup.yaml")
+		return fmt.Errorf("default_branch is not set in ~/.hv/config.yaml")
 	}
 	return l.validateNode("", l.DeckFile.Deck)
 }
@@ -42,7 +42,7 @@ func (l *Loaded) validateNode(nodePath string, node TreeNode) error {
 		orgName, repoName := parts[0], parts[1]
 		org, ok := l.Setup.Orgs[orgName]
 		if !ok {
-			return fmt.Errorf("node %q: repo %q references org %q which is not in setup.yaml", display, ref, orgName)
+			return fmt.Errorf("node %q: repo %q references org %q which is not in config.yaml", display, ref, orgName)
 		}
 		if err := validateProtocol(org.Protocol); err != nil {
 			return fmt.Errorf("org %q: %w", orgName, err)
@@ -66,7 +66,7 @@ func (l *Loaded) validateNode(nodePath string, node TreeNode) error {
 		}
 		org, ok := l.Setup.Orgs[mod.Org]
 		if !ok {
-			return fmt.Errorf("module %q references org %q which is not in setup.yaml", modName, mod.Org)
+			return fmt.Errorf("module %q references org %q which is not in config.yaml", modName, mod.Org)
 		}
 		if err := validateProtocol(org.Protocol); err != nil {
 			return fmt.Errorf("org %q: %w", mod.Org, err)

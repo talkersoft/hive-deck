@@ -37,12 +37,12 @@ func deckCmd() *cobra.Command {
 		Use:   "deck",
 		Short: "Provision and teardown multi-repo developer decks",
 		Long: `hv deck manages on-disk developer decks from a YAML deck file,
-parameterized by per-machine config in setup.yaml.
+parameterized by per-machine config in config.yaml.
 
-Config files (setup.yaml, modules.yaml, deck files) are resolved in order:
-  1. $HV_HOME/.hive/  — explicit override (useful in CI or dev)
-  2. <CWD>/.hive/     — project-local config, wins when present
-  3. $HOME/.hive/     — global user install fallback
+Config files (config.yaml, modules.yaml, deck files) are resolved in order:
+  1. $HV_HOME/.hv/  — explicit override (useful in CI or dev)
+  2. <CWD>/.hv/     — project-local config, wins when present
+  3. $HOME/.hv/     — global user install fallback
 
 The deck name is the positional argument; it maps to <name>.yaml found via
 the same search order.
@@ -263,7 +263,7 @@ func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Load
 func decksCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "decks",
-		Short: "List every deck file (*.yaml) in ~/.hive/",
+		Short: "List every deck file (*.yaml) in ~/.hv/",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			home, _, err := config.LoadSetup()
