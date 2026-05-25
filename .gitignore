@@ -1,7 +1,11 @@
-# Per-machine config and personal decks live in .hive/ — never committed.
-# The .example templates ARE committed (setup.yaml.example).
-.hive/*
-!.hive/*.example
+# Per-machine config and personal decks live in .hv/ — never committed.
+# The .example templates ARE committed (config.yaml.example).
+.hv/*
+!.hv/*.example
+
+# MCP build artifacts
+mcp/node_modules/
+mcp/dist/
 
 # Compiled binaries
 /bin/

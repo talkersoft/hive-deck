@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "hv.deck": {
+      "tools": ["status", "list", "decks"]
+    },
+    "hv.deck.operator": {
+      "extends": "hv.deck",
+      "tools": ["provision", "sync", "default"]
+    },
+    "hv.deck.pro": {
+      "extends": "hv.deck.operator",
+      "tools": ["pr", "teardown"]
+    }
+  }
+}

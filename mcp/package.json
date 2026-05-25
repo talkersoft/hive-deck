@@ -1,0 +1,26 @@
+{
+  "name": "hive-deck-mcp",
+  "version": "0.1.0",
+  "description": "Hive Deck MCP server — thin wrapper around the hv CLI",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "hive-deck-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

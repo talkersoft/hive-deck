@@ -10,7 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/talkersoft/hive-deck/internal/checkout"
 	"github.com/talkersoft/hive-deck/internal/config"
+	"github.com/talkersoft/hive-deck/internal/pr"
 	"github.com/talkersoft/hive-deck/internal/provision"
 	"github.com/talkersoft/hive-deck/internal/prune"
 	"github.com/talkersoft/hive-deck/internal/sync"
@@ -19,9 +21,9 @@ import (
 
 func main() {
 	root := &cobra.Command{
-		Use:           "hv",
-		Short:         "hive — developer workspace and workflow tooling",
-		SilenceUsage:  true,
+		Use:          "hv",
+		Short:        "hive — developer workspace and workflow tooling",
+		SilenceUsage: true,
 		SilenceErrors: true,
 		Long: `hv manages on-disk developer decks from a YAML deck file,
 parameterized by per-machine config in config.yaml.
@@ -43,6 +45,8 @@ the same search order.`,
 		statusCmd(),
 		listCmd(),
 		decksCmd(),
+		prCmd(),
+		defaultCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -264,6 +268,67 @@ func decksCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func prCmd() *cobra.Command {
+	var filter, title, body string
+	cmd := &cobra.Command{
+		Use:   "pr <deck> --title <title> [--body <body>] [--filter <node>]",
+		Short: "Open a pull request for every repo whose branch is ahead of origin/<default>",
+		Long: `For every provisioned repo in the deck:
+
+  dirty working tree          → abort (all repos checked first)
+  on default branch + ahead   → abort (create a branch for this work)
+  on default branch, no ahead → skip
+  on feature branch + ahead   → create PR with the given title/body
+  on feature branch, no ahead → skip
+  PR already open             → skip
+
+The same title and body are applied to every PR created.
+All created PR URLs are printed at the end.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if title == "" {
+				return fmt.Errorf("--title is required")
+			}
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			return pr.Run(l, pr.Options{
+				Filter: filter,
+				Title:  title,
+				Body:   body,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
+	cmd.Flags().StringVar(&body, "body", "", "PR body/description")
+	cmd.Flags().StringVar(&filter, "filter", "", "open PRs only for the subtree rooted at this node")
+	return cmd
+}
+
+func defaultCmd() *cobra.Command {
+	var filter string
+	cmd := &cobra.Command{
+		Use:   "default <deck> [--filter <node>]",
+		Short: "Switch every repo to its default branch after verifying all are clean",
+		Long: `Verifies every repo in the deck is fully clean (committed, pushed, no stash,
+no detached HEAD), then switches each one to its default branch and pulls.
+
+Aborts before touching anything if any repo fails the clean check.
+Repos already on the default branch are pulled but not checked out.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			return checkout.Run(l, checkout.Options{Filter: filter})
+		},
+	}
+	cmd.Flags().StringVar(&filter, "filter", "", "switch only the subtree rooted at this node")
+	return cmd
 }
 
 func sortedStringKeys[V any](m map[string]V) []string {
