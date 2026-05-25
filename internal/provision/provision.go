@@ -1,4 +1,4 @@
-// Package provision implements `hv deck provision <deck> [--filter <node>]`.
+// Package provision implements `hv provision <deck>`.
 // Provision is idempotent: missing repos are cloned, shell dirs (no .git/) are
 // restored in place, and already-cloned repos are skipped. Run it any number
 // of times — the result is always a fully provisioned deck.
@@ -30,8 +30,7 @@ import (
 )
 
 type Options struct {
-	Filter string // node name filter (empty = all)
-	Out    io.Writer
+	Out io.Writer
 }
 
 func Run(l *config.Loaded, opts Options) error {
@@ -43,7 +42,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, opts.Filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

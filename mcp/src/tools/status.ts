@@ -11,11 +11,9 @@ A repo is clean only when: working tree committed, everything pushed to upstream
 Dirty reasons include: uncommitted changes, unpushed commits, detached HEAD, stash entries.`,
     {
       deck: z.string().describe("Deck name to check (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
-      filter: z.string().optional().describe("Only show repos under this node name (e.g. 'tools', 'vm-infra/cloud-manager')."),
     },
-    async ({ deck, filter }) => {
+    async ({ deck }) => {
       const args = ["status", deck];
-      if (filter) args.push("--filter", filter);
       const { ok: success, output } = runHv(...args);
 
       if (!success) {

@@ -10,11 +10,9 @@ Verifies ALL repos are clean (committed, pushed, no stash) before touching anyth
 Run hv_status first if unsure whether the workspace is clean.`,
     {
       deck: z.string().describe("Deck name to sync (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
-      filter: z.string().optional().describe("Only sync repos under this node (e.g. 'tools'). Omit to sync the full deck."),
     },
-    async ({ deck, filter }) => {
+    async ({ deck }) => {
       const args = ["sync", deck];
-      if (filter) args.push("--filter", filter);
       const { ok: success, output } = runHv(...args);
       if (!success) {
         const hint = [

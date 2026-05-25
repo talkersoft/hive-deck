@@ -16,12 +16,10 @@ Requires gh CLI to be authenticated.`,
       deck: z.string().describe("Deck name to create PRs for (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
       title: z.string().describe("PR title applied to every pull request created."),
       body: z.string().optional().describe("PR body/description applied to every pull request. Can be left empty."),
-      filter: z.string().optional().describe("Only create PRs for repos under this node (e.g. 'tools')."),
     },
-    async ({ deck, title, body, filter }) => {
+    async ({ deck, title, body }) => {
       const args = ["pr", deck, "--title", title];
       if (body) args.push("--body", body);
-      if (filter) args.push("--filter", filter);
       const { ok: success, output } = runHv(...args);
 
       if (!success) {

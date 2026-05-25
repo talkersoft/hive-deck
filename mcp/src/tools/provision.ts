@@ -14,11 +14,9 @@ Also creates any GitHub repos that do not yet exist (requires gh CLI auth).
 Generates a VS Code .code-workspace file after provisioning.`,
     {
       deck: z.string().describe("Deck name to provision (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
-      filter: z.string().optional().describe("Only provision repos under this node (e.g. 'tools'). Omit to provision the full deck."),
     },
-    async ({ deck, filter }) => {
+    async ({ deck }) => {
       const args = ["provision", deck];
-      if (filter) args.push("--filter", filter);
       const { ok: success, output } = runHv(...args);
       if (!success) {
         const hint = [

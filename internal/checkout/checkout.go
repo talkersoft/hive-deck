@@ -13,9 +13,7 @@ import (
 	"github.com/talkersoft/hive-deck/internal/resolve"
 )
 
-type Options struct {
-	Filter string
-}
+type Options struct{}
 
 // Run executes the default-branch reset workflow:
 //  1. Run git.Check on every repo — accumulate all problems, fail if any.
@@ -25,7 +23,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, opts.Filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

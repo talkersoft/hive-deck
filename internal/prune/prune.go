@@ -1,4 +1,4 @@
-// Package prune implements `hv deck prune <workspace>`.
+// Package prune implements `hv prune <deck>`.
 //
 // Prune finds every git repo under the deck directory that is not declared in
 // the deck YAML, verifies each is clean (committed and pushed), then removes
@@ -32,7 +32,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, "")
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

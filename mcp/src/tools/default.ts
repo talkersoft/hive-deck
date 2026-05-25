@@ -11,11 +11,9 @@ Use this to reset a workspace after finishing a feature — ensures no repo is l
 Safe to run even if repos are already on the default branch (they will just be pulled).`,
     {
       deck: z.string().describe("Deck name to reset to default branches (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
-      filter: z.string().optional().describe("Only reset repos under this node. Omit to reset the full deck."),
     },
-    async ({ deck, filter }) => {
+    async ({ deck }) => {
       const args = ["default", deck];
-      if (filter) args.push("--filter", filter);
       const { ok: success, output } = runHv(...args);
 
       if (!success) {

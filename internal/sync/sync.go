@@ -1,4 +1,4 @@
-// Package sync implements `hv deck sync <workspace> [--filter <node>]`.
+// Package sync implements `hv sync <deck>`.
 //
 // Sync checks every in-scope repo is clean (committed and pushed), then pulls
 // each one. Aborts before touching anything if any repo is dirty.
@@ -15,8 +15,7 @@ import (
 )
 
 type Options struct {
-	Filter string
-	Out    io.Writer
+	Out io.Writer
 }
 
 func Run(l *config.Loaded, opts Options) error {
@@ -28,7 +27,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, opts.Filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

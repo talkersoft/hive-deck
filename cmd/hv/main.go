@@ -21,9 +21,9 @@ import (
 
 func main() {
 	root := &cobra.Command{
-		Use:          "hv",
-		Short:        "hive — developer workspace and workflow tooling",
-		SilenceUsage: true,
+		Use:           "hv",
+		Short:         "hive — developer workspace and workflow tooling",
+		SilenceUsage:  true,
 		SilenceErrors: true,
 		Long: `hv manages on-disk developer decks from a YAML deck file,
 parameterized by per-machine config in config.yaml.
@@ -56,11 +56,10 @@ the same search order.`,
 }
 
 func provisionCmd() *cobra.Command {
-	var filter string
-	cmd := &cobra.Command{
-		Use:   "provision <deck> [--filter <node>]",
+	return &cobra.Command{
+		Use:   "provision <deck>",
 		Short: "Provision every repo in the deck (idempotent)",
-		Long: `Provision every declared repo for the in-scope deck (or a filtered subtree).
+		Long: `Provision every declared repo in the deck.
 
 Idempotent — safe to run any number of times:
   missing repo     → cloned
@@ -76,24 +75,21 @@ The ` + "`gh`" + ` CLI is a hard runtime dependency.`,
 			if err != nil {
 				return err
 			}
-			return provision.Run(l, provision.Options{Filter: filter})
+			return provision.Run(l, provision.Options{})
 		},
 	}
-	cmd.Flags().StringVar(&filter, "filter", "", "provision only the subtree rooted at a node with this name")
-	return cmd
 }
 
 func teardownCmd() *cobra.Command {
-	var filter string
-	cmd := &cobra.Command{
-		Use:   "teardown <deck> [--filter <node>]",
-		Short: "Surgically remove tracked files + .git/ from every in-scope repo; preserve untracked files",
+	return &cobra.Command{
+		Use:   "teardown <deck>",
+		Short: "Surgically remove tracked files + .git/ from every repo; preserve untracked files",
 		Long: `Surgical preserve teardown — the only teardown hv offers.
 
-For each in-scope repo: deletes git-tracked files and the .git/ folder,
+For each repo: deletes git-tracked files and the .git/ folder,
 leaves every untracked file in place, prunes now-empty directories.
 
-Refuses if any in-scope repo has tracked work that would be lost.
+Refuses if any repo has tracked work that would be lost.
 There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -101,19 +97,16 @@ There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`
 			if err != nil {
 				return err
 			}
-			return teardown.Run(l, teardown.Options{Filter: filter})
+			return teardown.Run(l, teardown.Options{})
 		},
 	}
-	cmd.Flags().StringVar(&filter, "filter", "", "teardown only the subtree rooted at a node with this name")
-	return cmd
 }
 
 func syncCmd() *cobra.Command {
-	var filter string
-	cmd := &cobra.Command{
-		Use:   "sync <deck> [--filter <node>]",
-		Short: "Pull every in-scope repo after verifying all are clean",
-		Long: `Sync verifies every in-scope repo is clean (committed and pushed), then
+	return &cobra.Command{
+		Use:   "sync <deck>",
+		Short: "Pull every repo after verifying all are clean",
+		Long: `Sync verifies every repo is clean (committed and pushed), then
 runs git pull on each one. Aborts before touching anything if any repo
 has uncommitted changes, unpushed commits, or stash entries.`,
 		Args: cobra.ExactArgs(1),
@@ -122,11 +115,9 @@ has uncommitted changes, unpushed commits, or stash entries.`,
 			if err != nil {
 				return err
 			}
-			return sync.Run(l, sync.Options{Filter: filter})
+			return sync.Run(l, sync.Options{})
 		},
 	}
-	cmd.Flags().StringVar(&filter, "filter", "", "sync only the subtree rooted at a node with this name")
-	return cmd
 }
 
 func pruneCmd() *cobra.Command {
@@ -156,9 +147,8 @@ Use --dry-run to preview what would be removed without removing anything.`,
 }
 
 func statusCmd() *cobra.Command {
-	var filter string
-	cmd := &cobra.Command{
-		Use:   "status <deck> [--filter <node>]",
+	return &cobra.Command{
+		Use:   "status <deck>",
 		Short: "Report git state of every repo in the deck",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -166,15 +156,13 @@ func statusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return teardown.Status(l, filter, os.Stdout)
+			return teardown.Status(l, os.Stdout)
 		},
 	}
-	cmd.Flags().StringVar(&filter, "filter", "", "show only the subtree rooted at a node with this name")
-	return cmd
 }
 
 func listCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "list <deck>",
 		Short: "List every repo declared by the deck with provisioned state",
 		Args:  cobra.ExactArgs(1),
@@ -195,7 +183,6 @@ func listCmd() *cobra.Command {
 			return walkListNode(l.DeckFile.Deck, wsDir, "", l)
 		},
 	}
-	return cmd
 }
 
 func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Loaded) error {
@@ -271,9 +258,9 @@ func decksCmd() *cobra.Command {
 }
 
 func prCmd() *cobra.Command {
-	var filter, title, body string
+	var title, body string
 	cmd := &cobra.Command{
-		Use:   "pr <deck> --title <title> [--body <body>] [--filter <node>]",
+		Use:   "pr <deck> --title <title> [--body <body>]",
 		Short: "Open a pull request for every repo whose branch is ahead of origin/<default>",
 		Long: `For every provisioned repo in the deck:
 
@@ -296,22 +283,19 @@ All created PR URLs are printed at the end.`,
 				return err
 			}
 			return pr.Run(l, pr.Options{
-				Filter: filter,
-				Title:  title,
-				Body:   body,
+				Title: title,
+				Body:  body,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "PR body/description")
-	cmd.Flags().StringVar(&filter, "filter", "", "open PRs only for the subtree rooted at this node")
 	return cmd
 }
 
 func defaultCmd() *cobra.Command {
-	var filter string
-	cmd := &cobra.Command{
-		Use:   "default <deck> [--filter <node>]",
+	return &cobra.Command{
+		Use:   "default <deck>",
 		Short: "Switch every repo to its default branch after verifying all are clean",
 		Long: `Verifies every repo in the deck is fully clean (committed, pushed, no stash,
 no detached HEAD), then switches each one to its default branch and pulls.
@@ -324,11 +308,9 @@ Repos already on the default branch are pulled but not checked out.`,
 			if err != nil {
 				return err
 			}
-			return checkout.Run(l, checkout.Options{Filter: filter})
+			return checkout.Run(l, checkout.Options{})
 		},
 	}
-	cmd.Flags().StringVar(&filter, "filter", "", "switch only the subtree rooted at this node")
-	return cmd
 }
 
 func sortedStringKeys[V any](m map[string]V) []string {

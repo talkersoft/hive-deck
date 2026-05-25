@@ -1,5 +1,4 @@
-// Package teardown implements `hv deck teardown <deck> [--filter <node>]` and
-// `hv deck status <deck> [--filter <node>]`.
+// Package teardown implements `hv teardown <deck>` and `hv status <deck>`.
 //
 // Teardown is surgical preserve mode, always: for each in-scope repo it
 // deletes the git-tracked files and the .git/ folder, leaves every untracked
@@ -28,8 +27,7 @@ import (
 )
 
 type Options struct {
-	Filter string // node name filter (empty = all)
-	Out    io.Writer
+	Out io.Writer
 }
 
 func Run(l *config.Loaded, opts Options) error {
@@ -41,7 +39,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, opts.Filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}
@@ -150,7 +148,7 @@ func Run(l *config.Loaded, opts Options) error {
 
 // Status reports per-repo git state across every in-scope node without
 // changing anything.
-func Status(l *config.Loaded, filter string, out io.Writer) error {
+func Status(l *config.Loaded, out io.Writer) error {
 	if out == nil {
 		out = os.Stdout
 	}
@@ -159,7 +157,7 @@ func Status(l *config.Loaded, filter string, out io.Writer) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

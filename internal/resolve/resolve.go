@@ -44,10 +44,9 @@ type Plan struct {
 	WorkspaceFolders []string // node dirs with workspace_folder: true
 }
 
-// Build expands the workspace tree into a flat Plan. If filter is non-empty,
-// only subtrees rooted at a node named filter (at any depth) are included.
+// Build expands the full workspace tree into a flat Plan.
 // The caller must have already called Loaded.ValidateDeck.
-func Build(l *config.Loaded, filter string) (*Plan, error) {
+func Build(l *config.Loaded) (*Plan, error) {
 	root, err := config.ExpandRoot(l.Setup.DecksRoot)
 	if err != nil {
 		return nil, err
@@ -64,16 +63,16 @@ func Build(l *config.Loaded, filter string) (*Plan, error) {
 		Folders:      []string{wsDir},
 	}
 
-	if err := walkNode(l, wsDir, "", l.DeckFile.Deck, filter, plan); err != nil {
+	if err := walkNode(l, wsDir, "", l.DeckFile.Deck, plan); err != nil {
 		return nil, err
 	}
 	return plan, nil
 }
 
-// AllRepos returns every RepoPlan for the workspace with no filter applied.
+// AllRepos returns every RepoPlan for the workspace.
 // Used by workspace.Regenerate to write the .code-workspace file.
 func AllRepos(l *config.Loaded) ([]RepoPlan, error) {
-	plan, err := Build(l, "")
+	plan, err := Build(l)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +82,7 @@ func AllRepos(l *config.Loaded) ([]RepoPlan, error) {
 // AllWorkspaceFolders returns every WorkspaceFolder path for the full workspace tree.
 // Used by workspace.Regenerate to include non-repo folders in the .code-workspace file.
 func AllWorkspaceFolders(l *config.Loaded) ([]string, error) {
-	plan, err := Build(l, "")
+	plan, err := Build(l)
 	if err != nil {
 		return nil, err
 	}
@@ -93,21 +92,18 @@ func AllWorkspaceFolders(l *config.Loaded) ([]string, error) {
 // walkNode recursively walks a TreeNode, collecting folders, repos, symlinks, and
 // workspace_folder entries. nodeDir is the absolute path of the current node.
 // nodePath is the relative display path from the workspace root.
-// filter, when non-empty, limits collection to subtrees whose direct node name matches.
-func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, filter string, plan *Plan) error {
-	if filter == "" {
-		if err := collectRepoRefs(l, nodeDir, nodePath, node.RepoRefs, plan); err != nil {
-			return err
-		}
-		if err := collectModuleRefs(l, nodeDir, nodePath, node.ModuleRefs, plan); err != nil {
-			return err
-		}
-		if err := collectSymlinks(nodeDir, node.Symlinks, plan); err != nil {
-			return err
-		}
-		if node.WorkspaceFolder {
-			plan.WorkspaceFolders = append(plan.WorkspaceFolders, nodeDir)
-		}
+func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, plan *Plan) error {
+	if err := collectRepoRefs(l, nodeDir, nodePath, node.RepoRefs, plan); err != nil {
+		return err
+	}
+	if err := collectModuleRefs(l, nodeDir, nodePath, node.ModuleRefs, plan); err != nil {
+		return err
+	}
+	if err := collectSymlinks(nodeDir, node.Symlinks, plan); err != nil {
+		return err
+	}
+	if node.WorkspaceFolder {
+		plan.WorkspaceFolders = append(plan.WorkspaceFolders, nodeDir)
 	}
 
 	childNames := sortedKeys(node.Children)
@@ -118,22 +114,9 @@ func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, 
 		if nodePath != "" {
 			childPath = nodePath + "/" + childName
 		}
-
-		switch {
-		case filter == "":
-			plan.Folders = append(plan.Folders, childDir)
-			if err := walkNode(l, childDir, childPath, child, "", plan); err != nil {
-				return err
-			}
-		case childName == filter:
-			plan.Folders = append(plan.Folders, childDir)
-			if err := walkNode(l, childDir, childPath, child, "", plan); err != nil {
-				return err
-			}
-		default:
-			if err := walkNode(l, childDir, childPath, child, filter, plan); err != nil {
-				return err
-			}
+		plan.Folders = append(plan.Folders, childDir)
+		if err := walkNode(l, childDir, childPath, child, plan); err != nil {
+			return err
 		}
 	}
 	return nil

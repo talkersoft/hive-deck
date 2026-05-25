@@ -167,7 +167,7 @@ A VS Code `.code-workspace` file is generated at `<decks_root>/<deck>/hive-works
 
 ## Commands
 
-### `hv provision <deck> [--filter <node>]`
+### `hv provision <deck>`
 
 Clone every declared repo in the deck. Idempotent — safe to run any number of times.
 
@@ -180,15 +180,14 @@ Clone every declared repo in the deck. Idempotent — safe to run any number of 
 GitHub create-if-missing is always on: for any repo that doesn't yet exist on github.com, `gh repo create --private --add-readme` runs before the clone.
 
 ```sh
-hv provision cloud-manager                    # provision every repo in the deck
-hv provision cloud-manager --filter tools     # provision only repos under the 'tools' node
+hv provision cloud-manager
 ```
 
 **When to use:** starting a new machine, onboarding to a project, or restoring a workspace after teardown.
 
 ---
 
-### `hv teardown <deck> [--filter <node>]`
+### `hv teardown <deck>`
 
 Surgically remove tracked files and `.git/` from every in-scope repo, leaving all untracked files in place. Prunes now-empty directories.
 
@@ -201,34 +200,31 @@ Refuses to run if any repo has:
 There is no `--force` or nuke mode. Use `rm -rf` for destructive wipes.
 
 ```sh
-hv teardown cloud-manager                    # tear down every repo in the deck
-hv teardown cloud-manager --filter tools     # tear down only the tools subtree
+hv teardown cloud-manager
 ```
 
 **When to use:** freeing disk space while preserving untracked work, or as a completion signal in agentic pipelines — a successful teardown guarantees all work is committed and pushed.
 
 ---
 
-### `hv sync <deck> [--filter <node>]`
+### `hv sync <deck>`
 
 Verify every in-scope repo is fully clean (committed and pushed), then `git pull` each one. Aborts before touching anything if any repo is dirty.
 
 ```sh
-hv sync cloud-manager                    # pull every repo in the deck
-hv sync cloud-manager --filter tools     # pull only the tools subtree
+hv sync cloud-manager
 ```
 
 **When to use:** pulling in upstream changes at the start of a session after you know your local work is committed and pushed.
 
 ---
 
-### `hv status <deck> [--filter <node>]`
+### `hv status <deck>`
 
 Report the git state of every repo in the deck. Shows clean/dirty status and the specific reason for each dirty repo.
 
 ```sh
 hv status cloud-manager
-hv status cloud-manager --filter vm-infra
 ```
 
 Example output:
@@ -286,7 +282,7 @@ tooling
 
 ---
 
-### `hv pr <deck> --title <title> [--body <body>] [--filter <node>]`
+### `hv pr <deck> --title <title> [--body <body>]`
 
 Open a pull request for every repo in the deck that is on a feature branch with commits ahead of `origin/<default>`. The same title and body are applied to every PR created.
 
@@ -304,7 +300,6 @@ Pre-flight checks run across all repos before any PR is created:
 ```sh
 hv pr cloud-manager --title "feat: add webhook support"
 hv pr cloud-manager --title "fix: auth timeout" --body "Fixes the session expiry bug"
-hv pr cloud-manager --title "refactor: split config" --filter tools
 ```
 
 All created PR URLs are printed at the end of the run.
@@ -313,15 +308,14 @@ All created PR URLs are printed at the end of the run.
 
 ---
 
-### `hv default <deck> [--filter <node>]`
+### `hv default <deck>`
 
 Switch every repo in the deck to its default branch (`main`/`master`) and pull. Verifies all repos are fully clean and pushed before switching anything — if any repo is dirty the command aborts without touching anything.
 
 Safe to run when repos are already on the default branch (they will just be pulled).
 
 ```sh
-hv default cloud-manager                    # reset all repos to their default branch
-hv default cloud-manager --filter tools     # reset only the tools subtree
+hv default cloud-manager
 ```
 
 **When to use:** after PRs are merged — pull the merged changes and clear all feature branches in one step, leaving the workspace ready for the next task.

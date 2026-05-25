@@ -15,9 +15,8 @@ import (
 
 // Options holds the flags for the pr command.
 type Options struct {
-	Filter string
-	Title  string
-	Body   string
+	Title string
+	Body  string
 }
 
 // Run executes the pr workflow:
@@ -31,7 +30,7 @@ func Run(l *config.Loaded, opts Options) error {
 		return err
 	}
 
-	plan, err := resolve.Build(l, opts.Filter)
+	plan, err := resolve.Build(l)
 	if err != nil {
 		return err
 	}

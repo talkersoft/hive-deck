@@ -34,8 +34,7 @@ type file struct {
 
 // Regenerate writes (or removes) the workspace-level .code-workspace file at
 // <workspaces_root>/launch/<workspace>.code-workspace. It re-derives all repos
-// from the full workspace tree (not just the in-scope filter) so the file
-// always reflects the complete on-disk state.
+// from the full workspace tree so the file always reflects the complete on-disk state.
 func Regenerate(plan *resolve.Plan, l *config.Loaded) error {
 	allRepos, err := resolve.AllRepos(l)
 	if err != nil {
