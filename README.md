@@ -328,6 +328,19 @@ hv default cloud-manager --filter tools     # reset only the tools subtree
 
 ---
 
+### `hv prune <deck> [--dry-run]`
+
+Find every git repo on disk under the deck directory that is not declared in the deck YAML, verify each one is clean, then remove them. Aborts if any undeclared repo is dirty.
+
+```sh
+hv prune cloud-manager             # remove all undeclared repos (safe — aborts if any are dirty)
+hv prune cloud-manager --dry-run   # preview what would be removed without removing anything
+```
+
+**When to use:** after removing repos from a deck file — cleans up the on-disk directories that are no longer declared.
+
+---
+
 ## Typical agentic workflow
 
 ```sh
