@@ -19,24 +19,11 @@ import (
 
 func main() {
 	root := &cobra.Command{
-		Use:          "hv",
-		Short:        "hive — developer workspace and workflow tooling",
-		SilenceUsage: true,
-	}
-
-	root.AddCommand(deckCmd())
-
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
-}
-
-func deckCmd() *cobra.Command {
-	deck := &cobra.Command{
-		Use:   "deck",
-		Short: "Provision and teardown multi-repo developer decks",
-		Long: `hv deck manages on-disk developer decks from a YAML deck file,
+		Use:           "hv",
+		Short:         "hive — developer workspace and workflow tooling",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Long: `hv manages on-disk developer decks from a YAML deck file,
 parameterized by per-machine config in config.yaml.
 
 Config files (config.yaml, modules.yaml, deck files) are resolved in order:
@@ -45,15 +32,10 @@ Config files (config.yaml, modules.yaml, deck files) are resolved in order:
   3. $HOME/.hv/     — global user install fallback
 
 The deck name is the positional argument; it maps to <name>.yaml found via
-the same search order.
-
-Provision runs are transactional — if any clone fails, every clone made
-during the run is rolled back. Teardown is surgical preserve mode: tracked
-files + .git/ go, untracked files stay.`,
-		SilenceUsage: true,
+the same search order.`,
 	}
 
-	deck.AddCommand(
+	root.AddCommand(
 		provisionCmd(),
 		syncCmd(),
 		teardownCmd(),
@@ -63,7 +45,10 @@ files + .git/ go, untracked files stay.`,
 		decksCmd(),
 	)
 
-	return deck
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
 }
 
 func provisionCmd() *cobra.Command {
@@ -87,9 +72,7 @@ The ` + "`gh`" + ` CLI is a hard runtime dependency.`,
 			if err != nil {
 				return err
 			}
-			return provision.Run(l, provision.Options{
-				Filter: filter,
-			})
+			return provision.Run(l, provision.Options{Filter: filter})
 		},
 	}
 	cmd.Flags().StringVar(&filter, "filter", "", "provision only the subtree rooted at a node with this name")
@@ -99,9 +82,9 @@ The ` + "`gh`" + ` CLI is a hard runtime dependency.`,
 func teardownCmd() *cobra.Command {
 	var filter string
 	cmd := &cobra.Command{
-		Use:   "teardown <workspace> [--filter <node>]",
+		Use:   "teardown <deck> [--filter <node>]",
 		Short: "Surgically remove tracked files + .git/ from every in-scope repo; preserve untracked files",
-		Long: `Surgical preserve teardown — the only teardown hv deck offers.
+		Long: `Surgical preserve teardown — the only teardown hv offers.
 
 For each in-scope repo: deletes git-tracked files and the .git/ folder,
 leaves every untracked file in place, prunes now-empty directories.
@@ -114,9 +97,7 @@ There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`
 			if err != nil {
 				return err
 			}
-			return teardown.Run(l, teardown.Options{
-				Filter: filter,
-			})
+			return teardown.Run(l, teardown.Options{Filter: filter})
 		},
 	}
 	cmd.Flags().StringVar(&filter, "filter", "", "teardown only the subtree rooted at a node with this name")
@@ -126,7 +107,7 @@ There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`
 func syncCmd() *cobra.Command {
 	var filter string
 	cmd := &cobra.Command{
-		Use:   "sync <workspace>",
+		Use:   "sync <deck> [--filter <node>]",
 		Short: "Pull every in-scope repo after verifying all are clean",
 		Long: `Sync verifies every in-scope repo is clean (committed and pushed), then
 runs git pull on each one. Aborts before touching anything if any repo
@@ -147,7 +128,7 @@ has uncommitted changes, unpushed commits, or stash entries.`,
 func pruneCmd() *cobra.Command {
 	var dryRun bool
 	cmd := &cobra.Command{
-		Use:   "prune <workspace>",
+		Use:   "prune <deck> [--dry-run]",
 		Short: "Remove on-disk repos not declared in the deck",
 		Long: `Prune finds every git repo under the deck directory that is not declared
 in the deck YAML. It runs in three steps:
@@ -173,8 +154,8 @@ Use --dry-run to preview what would be removed without removing anything.`,
 func statusCmd() *cobra.Command {
 	var filter string
 	cmd := &cobra.Command{
-		Use:   "status <workspace> [--filter <node>]",
-		Short: "Report git state of every repo in the workspace",
+		Use:   "status <deck> [--filter <node>]",
+		Short: "Report git state of every repo in the deck",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			l, err := config.LoadDeck(args[0])
@@ -190,8 +171,8 @@ func statusCmd() *cobra.Command {
 
 func listCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list <workspace>",
-		Short: "List every repo declared by the workspace with provisioned state",
+		Use:   "list <deck>",
+		Short: "List every repo declared by the deck with provisioned state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			l, err := config.LoadDeck(args[0])
@@ -203,11 +184,9 @@ func listCmd() *cobra.Command {
 				return err
 			}
 			wsDir := filepath.Join(root, l.DeckName)
-
 			if err := l.ValidateDeck(); err != nil {
 				return err
 			}
-
 			fmt.Printf("%-40s %-25s %s\n", "DEST", "MODULE", "PROVISIONED")
 			return walkListNode(l.DeckFile.Deck, wsDir, "", l)
 		},
