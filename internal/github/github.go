@@ -45,6 +45,61 @@ func Create(slug string) error {
 	return nil
 }
 
+// PRInfo describes the pull-request state for a branch.
+type PRInfo struct {
+	State string // "OPEN", "MERGED", "CLOSED", or "" when no PR exists
+	URL   string
+}
+
+// GetPRInfo returns the state and URL of the most recent PR for the given
+// branch. Returns a zero PRInfo (State == "") when no PR is found.
+func GetPRInfo(dir, branch string) PRInfo {
+	cmd := exec.Command("gh", "pr", "view", branch, "--json", "state,url", "--jq", ".state+\"\\t\"+.url")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return PRInfo{}
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "\t", 2)
+	if len(parts) != 2 || parts[0] == "" {
+		return PRInfo{}
+	}
+	return PRInfo{State: parts[0], URL: parts[1]}
+}
+
+// OpenPR describes an open pull request returned by ListOpenPRs.
+type OpenPR struct {
+	Number int
+	Title  string
+	URL    string
+	Branch string
+}
+
+// ListOpenPRs returns all open pull requests for the repo at dir.
+// Returns nil (not an error) when the repo has no open PRs.
+func ListOpenPRs(dir string) []OpenPR {
+	cmd := exec.Command("gh", "pr", "list", "--state", "open", "--json", "number,title,url,headRefName", "--jq", ".[] | [.number|tostring, .headRefName, .url, .title] | join(\"\t\")")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var prs []OpenPR
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		var n int
+		fmt.Sscanf(parts[0], "%d", &n)
+		prs = append(prs, OpenPR{Number: n, Branch: parts[1], URL: parts[2], Title: parts[3]})
+	}
+	return prs
+}
+
 // isNotFound recognises the various ways the gh CLI signals a missing repo.
 // We only want to treat *confirmed* not-found as "safe to create" — auth or
 // permission errors must surface as real errors, not silent creation attempts.
