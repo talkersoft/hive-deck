@@ -444,10 +444,10 @@ func stashPopCmd() *cobra.Command {
 func mcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp <deck>",
-		Short: "Write MCP server config to the deck's .claude/settings.json",
+		Short: "Write MCP server config to the deck's .mcp.json",
 		Long: `Resolves the MCP registries listed in the deck file against ~/.hv/mcps.yaml and
-writes an mcpServers block into {deck.root}/{deck}/.claude/settings.json.
-When deck.enableRootMCP is true (default), also merges into {deck.root}/.claude/settings.json.
+writes an mcpServers block into {deck.root}/{deck}/.mcp.json.
+When deck.enableRootMCP is true (default), also merges into {deck.root}/.mcp.json.
 All other keys in those files are preserved.
 
 Requires mcp_manager.enabled: true in config.yaml.

@@ -1,4 +1,4 @@
-// Package mcp writes the mcpServers block into the deck's .claude/settings.json.
+// Package mcp writes mcpServers blocks into .mcp.json files that Claude Code reads.
 package mcp
 
 import (
@@ -10,10 +10,7 @@ import (
 	"github.com/talkersoft/hive-deck/internal/config"
 )
 
-const (
-	claudeDir    = ".claude"
-	settingsFile = "settings.json"
-)
+const mcpFile = ".mcp.json"
 
 type mcpServer struct {
 	Command string            `json:"command"`
@@ -21,9 +18,9 @@ type mcpServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
-// Apply writes an mcpServers block into {decksRoot}/{deckName}/.claude/settings.json,
+// Apply writes an mcpServers block into {decksRoot}/{deckName}/.mcp.json,
 // and when deck.enableRootMCP is true (the default), merges those servers into
-// {decksRoot}/.claude/settings.json as well.
+// {decksRoot}/.mcp.json as well.
 // No-op when mcp_manager.enabled is false or the deck lists no registries.
 func Apply(decksRoot string, l *config.Loaded) error {
 	if !l.Setup.MCPManager.Enabled {
@@ -56,18 +53,18 @@ func Apply(decksRoot string, l *config.Loaded) error {
 		return nil
 	}
 
-	deckDir := filepath.Join(decksRoot, l.DeckName, claudeDir)
-	if err := writeSettings(deckDir, servers, false); err != nil {
+	deckFile := filepath.Join(decksRoot, l.DeckName, mcpFile)
+	if err := writeFile(deckFile, servers, false); err != nil {
 		return err
 	}
-	fmt.Printf("mcp: wrote %d server(s) to %s\n", len(servers), filepath.Join(deckDir, settingsFile))
+	fmt.Printf("mcp: wrote %d server(s) to %s\n", len(servers), deckFile)
 
 	if l.Setup.Deck.RootMCPEnabled() {
-		rootDir := filepath.Join(decksRoot, claudeDir)
-		if err := writeSettings(rootDir, servers, true); err != nil {
+		rootFile := filepath.Join(decksRoot, mcpFile)
+		if err := writeFile(rootFile, servers, true); err != nil {
 			return err
 		}
-		fmt.Printf("mcp: merged %d server(s) into %s\n", len(servers), filepath.Join(rootDir, settingsFile))
+		fmt.Printf("mcp: merged %d server(s) into %s\n", len(servers), rootFile)
 	}
 
 	return nil
@@ -87,15 +84,14 @@ func resolveArg(decksRoot, arg string) string {
 	return filepath.Join(decksRoot, arg)
 }
 
-// writeSettings writes servers into <dir>/settings.json.
+// writeFile writes servers into a .mcp.json file.
 // When merge is true, existing mcpServers entries are preserved (accumulated from other decks).
 // When merge is false, the mcpServers block is replaced wholesale.
-func writeSettings(dir string, servers map[string]*mcpServer, merge bool) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dir, err)
+func writeFile(path string, servers map[string]*mcpServer, merge bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 
-	path := filepath.Join(dir, settingsFile)
 	doc := map[string]any{}
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, &doc); err != nil {
