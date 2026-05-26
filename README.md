@@ -10,7 +10,7 @@
 
 <p align="center">
   🔒 <strong>Enforced rules</strong> — no partial states, no forgotten repos, no surprises<br/>
-  🛠️ <strong>Auto-configured</strong> — MCP servers and .gitignore rules applied to every repo at init<br/>
+  🛠️ <strong>Scoped MCP management</strong> — manages per-deck and per-workspace MCP configurations automatically at init<br/>
   🌿 <strong>Automatic branch management</strong> — deck is always on a named feature branch; main is never checked out locally<br/>
   📂 <strong>VS Code workspace</strong> — a <code>.code-workspace</code> file is automatically generated and kept in sync for every deck
 </p>
