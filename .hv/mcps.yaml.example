@@ -1,0 +1,26 @@
+# MCP server definitions. Copy to mcps.yaml (gitignored) and edit for your machine.
+# Servers are grouped into named registries; decks subscribe to registries by name.
+# Args are resolved relative to deck.root — no hardcoded home directories.
+#
+# Example deck file usage:
+#   mcps:
+#     registries:
+#       - my-toolkit
+#       - protools
+#
+# hv init and hv mcp write these into {deck.root}/{deck}/.claude/settings.json.
+# When deck.enableRootMCP is true (default), also merged into {deck.root}/.claude/settings.json.
+
+# my-toolkit:
+#   servers:
+#     my-mcp-server:
+#       command: node
+#       args: ["my-deck/tools/my-mcp/dist/index.js"]   # relative to deck.root
+#       env:
+#         MY_ENV_VAR: value
+
+# protools:
+#   servers:
+#     playwright:
+#       command: npx
+#       args: ["@playwright/mcp@latest"]

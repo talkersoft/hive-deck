@@ -35,6 +35,26 @@ gitignore:
 readme:
   enabled: false
 
+# Optional: ship behaviour.
+ship:
+  # After opening PRs, automatically delete the feature branch from GitHub on merge.
+  delete_branch_on_merge: false
+
+  # When true, block hv next and hv teardown if any repo has an open (unmerged) PR.
+  # Creates a human review gate — the workspace stays on the feature branch until all
+  # PRs are merged.  Default: false (open PRs are fine, transition proceeds immediately).
+  require_merged_pr: false
+
+  # When true, automatically merge every PR immediately after opening via gh pr merge.
+  # Pairs with require_merged_pr: true to get an instant, gated ship-and-transition flow.
+  # Default: false.
+  auto_merge: false
+
+  # When true (and auto_merge is on), tear down every repo from disk after PRs are merged.
+  # Use this for ephemeral/CI flows where you want a clean slate between tasks.
+  # Default: false (deck stays on disk; use hv next to transition to the next branch).
+  teardown_on_ship: false
+
 # Optional: drop a .claude/settings.local.json into every cloned repo so Claude
 # Code picks up project-local permissions without per-repo setup. Existing
 # files are never overwritten — hv only writes when the file is absent.
@@ -51,3 +71,9 @@ claude_settings:
     - "WebFetch(*)"
     - "WebSearch(*)"
   default_mode: bypassPermissions    # optional; "bypassPermissions" if omitted
+
+# Optional: write MCP server config to {decks_root}/.claude/settings.json at init time.
+# MCP definitions live in mcps.yaml (same search order as this file).
+# Each deck declares which MCPs it needs via a top-level `mcps:` list.
+mcp_manager:
+  enabled: false   # flip to true to enable MCP config writing on hv init

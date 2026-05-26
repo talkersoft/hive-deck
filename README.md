@@ -8,6 +8,15 @@
 
 ---
 
+<p align="center">
+  🔒 <strong>Enforced rules</strong> — no partial states, no forgotten repos, no surprises<br/>
+  🛠️ <strong>Auto-configured</strong> — MCP servers and .gitignore rules applied to every repo at init<br/>
+  🌿 <strong>Automatic branch management</strong> — deck is always on a named feature branch; main is never checked out locally<br/>
+  📂 <strong>VS Code workspace</strong> — a <code>.code-workspace</code> file is automatically generated and kept in sync for every deck
+</p>
+
+---
+
 <table align="center" width="100%">
 <tr>
 <td align="center" width="50%">
@@ -46,11 +55,6 @@
 </tr>
 </table>
 
-<p align="center">
-  🔒 <strong>Enforced rules</strong> — no partial states, no forgotten repos, no surprises<br/>
-  🛠️ <strong>Auto-configured</strong> — MCP servers and .gitignore rules applied to every repo at init<br/>
-  🌿 <strong>Automatic branch management</strong> — deck is always on a named feature branch; main is never checked out locally
-</p>
 
 ---
 
@@ -98,9 +102,9 @@ Add the MCP server to `~/.claude.json`:
   "mcpServers": {
     "hive-deck-mcp": {
       "command": "node",
-      "args": ["/path/to/hive-deck/mcp/dist/index.js"],
+      "args": ["/path/to/hive-deck-pro/mcp/dist/index.js"],
       "env": {
-        "MCP_PROFILE": "hv.deck.operator"
+        "MCP_PROFILE": "hv.deck.pro"
       }
     }
   }

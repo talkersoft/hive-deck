@@ -95,7 +95,7 @@ GitHub create-if-missing is always on.`,
 			if err := branch.CreateAll(l, branchName); err != nil {
 				return err
 			}
-			root, err := config.ExpandRoot(l.Setup.DecksRoot)
+			root, err := config.ExpandRoot(l.Setup.Deck.Root)
 			if err != nil {
 				return err
 			}
@@ -251,7 +251,7 @@ func listReposCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			root, err := config.ExpandRoot(l.Setup.DecksRoot)
+			root, err := config.ExpandRoot(l.Setup.Deck.Root)
 			if err != nil {
 				return err
 			}
@@ -331,7 +331,7 @@ func listDecksCmd() *cobra.Command {
 
 func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Loaded) error {
 	wsPrefix := filepath.Join(func() string {
-		r, _ := config.ExpandRoot(l.Setup.DecksRoot)
+		r, _ := config.ExpandRoot(l.Setup.Deck.Root)
 		return r
 	}(), l.DeckName) + "/"
 
@@ -444,10 +444,11 @@ func stashPopCmd() *cobra.Command {
 func mcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp <deck>",
-		Short: "Write MCP server config to {decks_root}/.claude/settings.json",
-		Long: `Resolves the MCPs listed in the deck file against ~/.hv/mcps.yaml and
-merges an mcpServers block into {decks_root}/.claude/settings.json.
-All other keys in that file are preserved.
+		Short: "Write MCP server config to the deck's .claude/settings.json",
+		Long: `Resolves the MCP registries listed in the deck file against ~/.hv/mcps.yaml and
+writes an mcpServers block into {deck.root}/{deck}/.claude/settings.json.
+When deck.enableRootMCP is true (default), also merges into {deck.root}/.claude/settings.json.
+All other keys in those files are preserved.
 
 Requires mcp_manager.enabled: true in config.yaml.
 Also runs automatically at the end of hv init when enabled.`,
@@ -457,7 +458,7 @@ Also runs automatically at the end of hv init when enabled.`,
 			if err != nil {
 				return err
 			}
-			root, err := config.ExpandRoot(l.Setup.DecksRoot)
+			root, err := config.ExpandRoot(l.Setup.Deck.Root)
 			if err != nil {
 				return err
 			}

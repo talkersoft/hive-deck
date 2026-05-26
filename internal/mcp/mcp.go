@@ -1,4 +1,4 @@
-// Package mcp writes the mcpServers block into {decks_root}/.claude/settings.json.
+// Package mcp writes the mcpServers block into the deck's .claude/settings.json.
 package mcp
 
 import (
@@ -21,39 +21,76 @@ type mcpServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
-// Apply writes an mcpServers block into {decksRoot}/.claude/settings.json,
-// merging with any existing content and preserving all other top-level keys.
-// No-op when mcp_manager.enabled is false, the deck lists no MCPs, or mcps.yaml is absent.
+// Apply writes an mcpServers block into {decksRoot}/{deckName}/.claude/settings.json,
+// and when deck.enableRootMCP is true (the default), merges those servers into
+// {decksRoot}/.claude/settings.json as well.
+// No-op when mcp_manager.enabled is false or the deck lists no registries.
 func Apply(decksRoot string, l *config.Loaded) error {
 	if !l.Setup.MCPManager.Enabled {
 		return nil
 	}
-	if len(l.DeckFile.MCPs) == 0 {
+	if len(l.DeckFile.MCPs.Registries) == 0 {
 		return nil
 	}
 
-	servers := make(map[string]*mcpServer, len(l.DeckFile.MCPs))
-	for _, name := range l.DeckFile.MCPs {
-		def, ok := l.MCPDefs[name]
+	servers := make(map[string]*mcpServer)
+	for _, regName := range l.DeckFile.MCPs.Registries {
+		reg, ok := l.MCPDefs[regName]
 		if !ok {
-			return fmt.Errorf("mcp %q listed in deck but not defined in mcps.yaml", name)
+			return fmt.Errorf("mcp registry %q listed in deck but not defined in mcps.yaml", regName)
 		}
-		resolved := make([]string, len(def.Args))
-		for i, arg := range def.Args {
-			if filepath.IsAbs(arg) {
-				resolved[i] = arg
-			} else {
-				resolved[i] = filepath.Join(decksRoot, arg)
+		for name, def := range reg.Servers {
+			resolved := make([]string, len(def.Args))
+			for i, arg := range def.Args {
+				resolved[i] = resolveArg(decksRoot, arg)
 			}
-		}
-		servers[name] = &mcpServer{
-			Command: def.Command,
-			Args:    resolved,
-			Env:     def.Env,
+			servers[name] = &mcpServer{
+				Command: def.Command,
+				Args:    resolved,
+				Env:     def.Env,
+			}
 		}
 	}
 
-	dir := filepath.Join(decksRoot, claudeDir)
+	if len(servers) == 0 {
+		return nil
+	}
+
+	deckDir := filepath.Join(decksRoot, l.DeckName, claudeDir)
+	if err := writeSettings(deckDir, servers, false); err != nil {
+		return err
+	}
+	fmt.Printf("mcp: wrote %d server(s) to %s\n", len(servers), filepath.Join(deckDir, settingsFile))
+
+	if l.Setup.Deck.RootMCPEnabled() {
+		rootDir := filepath.Join(decksRoot, claudeDir)
+		if err := writeSettings(rootDir, servers, true); err != nil {
+			return err
+		}
+		fmt.Printf("mcp: merged %d server(s) into %s\n", len(servers), filepath.Join(rootDir, settingsFile))
+	}
+
+	return nil
+}
+
+// resolveArg resolves a single MCP arg to its final value.
+// Absolute paths are returned unchanged. npm scoped packages (@scope/pkg)
+// and flags (--flag) are not file paths and are returned as-is.
+// Relative paths are joined with decksRoot.
+func resolveArg(decksRoot, arg string) string {
+	if filepath.IsAbs(arg) {
+		return arg
+	}
+	if len(arg) > 0 && (arg[0] == '@' || arg[0] == '-') {
+		return arg
+	}
+	return filepath.Join(decksRoot, arg)
+}
+
+// writeSettings writes servers into <dir>/settings.json.
+// When merge is true, existing mcpServers entries are preserved (accumulated from other decks).
+// When merge is false, the mcpServers block is replaced wholesale.
+func writeSettings(dir string, servers map[string]*mcpServer, merge bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
@@ -68,16 +105,23 @@ func Apply(decksRoot string, l *config.Loaded) error {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 
-	doc["mcpServers"] = servers
+	if merge {
+		existing, _ := doc["mcpServers"].(map[string]any)
+		if existing == nil {
+			existing = map[string]any{}
+		}
+		for name, srv := range servers {
+			existing[name] = srv
+		}
+		doc["mcpServers"] = existing
+	} else {
+		doc["mcpServers"] = servers
+	}
 
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
 	b = append(b, '\n')
-	if err := os.WriteFile(path, b, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	fmt.Printf("mcp: wrote %d server(s) to %s\n", len(servers), path)
-	return nil
+	return os.WriteFile(path, b, 0o644)
 }

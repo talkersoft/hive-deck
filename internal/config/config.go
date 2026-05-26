@@ -18,11 +18,21 @@ const (
 	LaunchDir   = "hive-workspace"
 )
 
+// MCPConfig holds the MCP subscription list for a deck.
+type MCPConfig struct {
+	Registries []string `yaml:"registries"`
+}
+
+// MCPRegistry is a named group of MCP server definitions in mcps.yaml.
+type MCPRegistry struct {
+	Servers map[string]MCPDefinition `yaml:"servers"`
+}
+
 // DeckFile is the parsed content of a deck YAML file (e.g. cloud-manager.yaml).
 // The filename stem determines the deck folder name; deck: is the folder tree.
 type DeckFile struct {
-	MCPs []string `yaml:"mcps"` // names referencing keys in mcps.yaml
-	Deck TreeNode `yaml:"deck"`
+	MCPs MCPConfig `yaml:"mcps"`
+	Deck TreeNode  `yaml:"deck"`
 }
 
 // TreeNode represents a folder in the deck tree. All keys are optional and
@@ -77,16 +87,27 @@ type Module struct {
 	Repos []string `yaml:"repos"`
 }
 
+// DeckConfig holds workspace-root-level settings (formerly decks_root).
+type DeckConfig struct {
+	Root          string `yaml:"root"`
+	EnableRootMCP *bool  `yaml:"enableRootMCP"`
+}
+
+// RootMCPEnabled returns true unless enableRootMCP is explicitly set to false.
+func (d DeckConfig) RootMCPEnabled() bool {
+	return d.EnableRootMCP == nil || *d.EnableRootMCP
+}
+
 type Setup struct {
-	DecksRoot      string            `yaml:"decks_root"`
+	Deck           DeckConfig        `yaml:"deck"`
 	Orgs           map[string]Org    `yaml:"orgs"`
 	DefaultBranch  string            `yaml:"default_branch"`
 	Branches       map[string]string `yaml:"branches"`
 	ClaudeSettings ClaudeSettings    `yaml:"claude_settings"`
 	Gitignore      GitignoreConfig   `yaml:"gitignore"`
 	Readme         ReadmeConfig      `yaml:"readme"`
-	Ship       ShipConfig       `yaml:"ship"`
-	MCPManager MCPManagerConfig `yaml:"mcp_manager"`
+	Ship           ShipConfig        `yaml:"ship"`
+	MCPManager     MCPManagerConfig  `yaml:"mcp_manager"`
 }
 
 // ShipConfig controls behaviour of `hv ship`.
@@ -142,7 +163,7 @@ type Loaded struct {
 	DeckFile DeckFile
 	DeckName string            // filename stem, e.g. "cloud-manager" from "cloud-manager.yaml"
 	Modules  map[string]Module // from modules.yaml
-	MCPDefs  map[string]MCPDefinition // from mcps.yaml; empty map when file is absent
+	MCPDefs  map[string]MCPRegistry // from mcps.yaml; empty map when file is absent
 	Setup    Setup
 	DeckPath string
 }
@@ -197,24 +218,24 @@ func LoadDeck(name string) (*Loaded, error) {
 
 // LoadMCPs reads mcps.yaml using the CWD-first search order.
 // Returns an empty map (not an error) if the file is absent.
-func LoadMCPs() (map[string]MCPDefinition, error) {
+func LoadMCPs() (map[string]MCPRegistry, error) {
 	path, err := findConfigFile(MCPsFile)
 	if err != nil {
 		return nil, err
 	}
 	if path == "" {
-		return make(map[string]MCPDefinition), nil
+		return make(map[string]MCPRegistry), nil
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var defs map[string]MCPDefinition
+	var defs map[string]MCPRegistry
 	if err := yaml.Unmarshal(b, &defs); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	if defs == nil {
-		defs = make(map[string]MCPDefinition)
+		defs = make(map[string]MCPRegistry)
 	}
 	return defs, nil
 }
@@ -356,7 +377,7 @@ func loadSetup(path string) (Setup, error) {
 // ExpandRoot resolves a leading ~ to the user's home directory.
 func ExpandRoot(root string) (string, error) {
 	if root == "" {
-		return "", fmt.Errorf("decks_root is empty")
+		return "", fmt.Errorf("deck.root is empty")
 	}
 	if root == "~" || (len(root) >= 2 && root[:2] == "~/") {
 		h, err := os.UserHomeDir()

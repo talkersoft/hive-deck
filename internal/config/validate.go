@@ -16,8 +16,8 @@ func (l *Loaded) ValidateDeck() error {
 	if empty {
 		return fmt.Errorf("deck %q: deck: tree is empty", l.DeckName)
 	}
-	if l.Setup.DecksRoot == "" {
-		return fmt.Errorf("decks_root is not set in ~/.hv/config.yaml")
+	if l.Setup.Deck.Root == "" {
+		return fmt.Errorf("deck.root is not set in ~/.hv/config.yaml")
 	}
 	if l.Setup.DefaultBranch == "" {
 		return fmt.Errorf("default_branch is not set in ~/.hv/config.yaml")
