@@ -102,9 +102,9 @@ Add the MCP server to `~/.claude.json`:
   "mcpServers": {
     "hive-deck-mcp": {
       "command": "node",
-      "args": ["/path/to/hive-deck/mcp/dist/index.js"],
+      "args": ["/path/to/hive-deck-pro/mcp/dist/index.js"],
       "env": {
-        "MCP_PROFILE": "hv.deck.operator"
+        "MCP_PROFILE": "hv.deck.pro"
       }
     }
   }

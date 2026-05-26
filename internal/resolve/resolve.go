@@ -47,7 +47,7 @@ type Plan struct {
 // Build expands the full workspace tree into a flat Plan.
 // The caller must have already called Loaded.ValidateDeck.
 func Build(l *config.Loaded) (*Plan, error) {
-	root, err := config.ExpandRoot(l.Setup.DecksRoot)
+	root, err := config.ExpandRoot(l.Setup.Deck.Root)
 	if err != nil {
 		return nil, err
 	}
