@@ -3,6 +3,7 @@
   <br/>
   <h1 align="center">Hive Deck</h1>
   <h3 align="center"><em>"Deterministic multi-repo orchestration for agentic AI."</em></h3>
+  <p align="center">Manage hundreds of repos as one. Pick your interface.</p>
 </p>
 
 ---
@@ -11,36 +12,39 @@
 <tr>
 <td align="center" width="50%">
 <h2>🤖 MCP</h2>
-<h4>Talk to your AI agent — it handles every repo</h4>
-
-| `hv_init` | `hv_ship` | `hv_next` | `hv_stash` / `hv_unstash` |
-|---|---|---|---|
-| `hv_sync` | `hv_status` | `hv_list` | `hv_list_pulls` |
-| `hv_decks` | `hv_teardown` | `hv_prune` | `hv_mcp` |
-
+<h4>Talk to your AI agent<br/>it handles every repo</h4>
 </td>
 <td align="center" width="50%">
 <h2>⚡ CLI</h2>
 <h4>Full terminal control for scripting and CI</h4>
-
-| `hv init` | `hv ship` | `hv next` | `hv stash push` / `pop` |
-|---|---|---|---|
-| `hv sync` | `hv status` | `hv list repos` | `hv list pulls` |
-| `hv list decks` | `hv teardown` | `hv prune` | `hv mcp` |
-
 </td>
 </tr>
 </table>
 
-<br/>
+<h3 align="center">Unified Features</h3>
 
-| | | | |
-|---|---|---|---|
-| 🚀 **Provision + branch** | Clone every repo, create a feature branch, and apply MCP config in one shot | 📦 **Ship** | Commit, push, and open PRs for every changed repo simultaneously |
-| 🔀 **Next** | Transition to a new branch from `origin/main` — local main never touched | 🧯 **Stash / unstash** | Deadlock escape — stash dirty changes on a merged branch, restore after next |
-| 🔄 **Sync** | Verify every repo is clean, then pull the whole deck at once | 📊 **Status** | Snapshot the git state of every repo in a single view |
-| 📋 **List repos** | See every declared repo and whether it's provisioned on disk | 🔍 **List pulls** | Surface all open pull requests across every repo in the deck |
-| 🧹 **Teardown** | Surgically remove tracked files and `.git/` — untracked files preserved | ✂️ **Prune** | Remove on-disk repos no longer declared in the deck |
+<table width="100%">
+<tr>
+<td>🚀 <strong>Provision + branch</strong></td><td><small>Clone every repo, create a feature branch, and apply MCP config in one shot</small></td>
+<td>📦 <strong>Ship</strong></td><td><small>Commit, push, and open PRs for every changed repo simultaneously</small></td>
+</tr>
+<tr>
+<td>🔀 <strong>Next</strong></td><td><small>Transition to a new branch from <code>origin/main</code> — local main never touched</small></td>
+<td>🧯 <strong>Stash / unstash</strong></td><td><small>Deadlock escape — stash dirty changes on a merged branch, restore after next</small></td>
+</tr>
+<tr>
+<td>🔄 <strong>Sync</strong></td><td><small>Verify every repo is clean, then pull the whole deck at once</small></td>
+<td>📊 <strong>Status</strong></td><td><small>Snapshot the git state of every repo in a single view</small></td>
+</tr>
+<tr>
+<td>📋 <strong>List repos</strong></td><td><small>See every declared repo and whether it's provisioned on disk</small></td>
+<td>🔍 <strong>List pulls</strong></td><td><small>Surface all open pull requests across every repo in the deck</small></td>
+</tr>
+<tr>
+<td>🧹 <strong>Teardown</strong></td><td><small>Surgically remove tracked files and <code>.git/</code> — untracked files preserved</small></td>
+<td>✂️ <strong>Prune</strong></td><td><small>Remove on-disk repos no longer declared in the deck</small></td>
+</tr>
+</table>
 
 <p align="center">
   🔒 <strong>Enforced rules</strong> — no partial states, no forgotten repos, no surprises<br/>
