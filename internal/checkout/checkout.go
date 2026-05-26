@@ -1,5 +1,5 @@
-// Package checkout implements `hv deck default` — reset every repo in the
-// deck to its default branch, after verifying all repos are fully clean.
+// Package checkout implements `hv next` — transition every repo to a new branch
+// based on origin/<default>, without ever checking out the default branch locally.
 package checkout
 
 import (
@@ -9,15 +9,21 @@ import (
 	"strings"
 
 	"github.com/talkersoft/hive-deck/internal/config"
-	"github.com/talkersoft/hive-deck/internal/git"
+	"github.com/talkersoft/hive-deck/internal/github"
 	"github.com/talkersoft/hive-deck/internal/resolve"
 )
 
-type Options struct{}
+type Options struct {
+	RequireMergedPR bool
+	NextBranch      string
+}
 
-// Run executes the default-branch reset workflow:
-//  1. Run git.Check on every repo — accumulate all problems, fail if any.
-//  2. Switch every repo to its default branch and pull.
+// Run executes the next-branch transition workflow:
+//  1. Validate NextBranch is not the default branch name.
+//  2. Verify every repo is safe to transition — accumulate all problems, fail if any.
+//  3. Fetch origin and checkout -b <NextBranch> origin/<default> in every repo.
+//
+// The local default branch is never checked out.
 func Run(l *config.Loaded, opts Options) error {
 	if err := l.ValidateDeck(); err != nil {
 		return err
@@ -41,55 +47,78 @@ func Run(l *config.Loaded, opts Options) error {
 		repos = append(repos, repoMeta{r, defaultBranch(r.Dest)})
 	}
 
-	// Phase 1: verify all repos are clean — same check as sync/teardown/pr.
+	// Validate: NextBranch must not be the default branch.
+	for _, rm := range repos {
+		if opts.NextBranch == rm.defaultBranch {
+			return fmt.Errorf("%q is the default branch — hv next requires a feature branch name", opts.NextBranch)
+		}
+	}
+
+	// Phase 1: verify all repos are safe to transition.
 	type problem struct {
 		repo    string
 		reasons []string
 	}
 	var problems []problem
 	for _, rm := range repos {
-		st := git.Check(rm.r.Dest, rm.r.Repo)
-		if !st.Clean {
-			problems = append(problems, problem{rm.r.Repo, st.Reasons})
+		current, err := currentBranch(rm.r.Dest)
+		if err != nil {
+			problems = append(problems, problem{rm.r.Repo, []string{"could not read branch: " + err.Error()}})
+			continue
+		}
+
+		var reasons []string
+
+		if uncommittedChanges(rm.r.Dest) {
+			reasons = append(reasons, "working tree not clean — run hv stash first if the branch has a merged PR, otherwise run hv ship")
+		}
+
+		if len(reasons) == 0 && current != rm.defaultBranch {
+			ahead := commitsAhead(rm.r.Dest, "origin/"+rm.defaultBranch)
+			if ahead > 0 {
+				if rm.r.GitHubSlug == "" {
+					reasons = append(reasons, fmt.Sprintf("%d commit(s) on branch %q with no GitHub remote — push manually before transitioning", ahead, current))
+				} else {
+					info := github.GetPRInfo(rm.r.Dest, current)
+					switch {
+					case info.State == "":
+						reasons = append(reasons, fmt.Sprintf("%d commit(s) on branch %q with no pull request — run hv ship first", ahead, current))
+					case info.State == "OPEN" && opts.RequireMergedPR:
+						reasons = append(reasons, fmt.Sprintf("PR %s is still open — merge it before transitioning (require_merged_pr: true)", info.URL))
+					}
+					// MERGED always passes; OPEN passes when RequireMergedPR is false
+				}
+			}
+		}
+
+		if len(reasons) > 0 {
+			problems = append(problems, problem{rm.r.Repo, reasons})
 		}
 	}
 	if len(problems) > 0 {
-		fmt.Fprintln(os.Stderr, "error: the following repos are not clean:")
+		fmt.Fprintln(os.Stderr, "error: the following repos are not ready to transition:")
 		for _, p := range problems {
 			fmt.Fprintf(os.Stderr, "  %s\n", p.repo)
 			for _, r := range p.reasons {
 				fmt.Fprintf(os.Stderr, "    - %s\n", r)
 			}
 		}
-		return fmt.Errorf("all repos must be clean and fully pushed before switching to default branches")
+		return fmt.Errorf("resolve the above issues before transitioning")
 	}
 
-	// Phase 2: switch every repo to its default branch and pull.
-	fmt.Printf("default: %s repos=%d\n", plan.Deck, len(repos))
+	// Phase 2: fetch origin and create new branch from origin/<default>.
+	fmt.Printf("next: %s → %s repos=%d\n", plan.Deck, opts.NextBranch, len(repos))
 	for _, rm := range repos {
-		current, err := currentBranch(rm.r.Dest)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  error %-30s could not read branch: %v\n", rm.r.Repo, err)
+		if err := gitFetch(rm.r.Dest); err != nil {
+			fmt.Fprintf(os.Stderr, "  error %-30s fetch: %v\n", rm.r.Repo, err)
 			continue
 		}
-
-		if current != rm.defaultBranch {
-			if err := gitCheckout(rm.r.Dest, rm.defaultBranch); err != nil {
-				fmt.Fprintf(os.Stderr, "  error %-30s checkout %s: %v\n", rm.r.Repo, rm.defaultBranch, err)
-				continue
-			}
-		}
-
-		if err := gitPull(rm.r.Dest); err != nil {
-			fmt.Fprintf(os.Stderr, "  error %-30s pull: %v\n", rm.r.Repo, err)
+		remoteRef := "origin/" + rm.defaultBranch
+		if err := gitCheckoutNewFrom(rm.r.Dest, opts.NextBranch, remoteRef); err != nil {
+			fmt.Fprintf(os.Stderr, "  error %-30s checkout -b %s %s: %v\n", rm.r.Repo, opts.NextBranch, remoteRef, err)
 			continue
 		}
-
-		if current == rm.defaultBranch {
-			fmt.Printf("  pull  %-30s already on %s\n", rm.r.Repo, rm.defaultBranch)
-		} else {
-			fmt.Printf("  reset %-30s %s → %s\n", rm.r.Repo, current, rm.defaultBranch)
-		}
+		fmt.Printf("  next  %-30s → %s\n", rm.r.Repo, opts.NextBranch)
 	}
 
 	return nil
@@ -118,8 +147,28 @@ func currentBranch(dir string) (string, error) {
 	return b, nil
 }
 
-func gitCheckout(dir, branch string) error {
-	cmd := exec.Command("git", "checkout", branch)
+func uncommittedChanges(dir string) bool {
+	cmd := exec.Command("git", "status", "--porcelain", "-uno")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
+func commitsAhead(dir, ref string) int {
+	out, err := runGit(dir, "rev-list", "--count", ref+"..HEAD")
+	if err != nil {
+		return 0
+	}
+	n := 0
+	fmt.Sscanf(strings.TrimSpace(out), "%d", &n)
+	return n
+}
+
+func gitFetch(dir string) error {
+	cmd := exec.Command("git", "fetch", "origin")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -128,8 +177,8 @@ func gitCheckout(dir, branch string) error {
 	return nil
 }
 
-func gitPull(dir string) error {
-	cmd := exec.Command("git", "pull")
+func gitCheckoutNewFrom(dir, branch, from string) error {
+	cmd := exec.Command("git", "checkout", "-b", branch, from)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -10,11 +10,16 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/talkersoft/hive-deck/internal/branch"
 	"github.com/talkersoft/hive-deck/internal/checkout"
 	"github.com/talkersoft/hive-deck/internal/config"
-	"github.com/talkersoft/hive-deck/internal/pr"
+	"github.com/talkersoft/hive-deck/internal/github"
+	"github.com/talkersoft/hive-deck/internal/mcp"
 	"github.com/talkersoft/hive-deck/internal/provision"
 	"github.com/talkersoft/hive-deck/internal/prune"
+	"github.com/talkersoft/hive-deck/internal/resolve"
+	"github.com/talkersoft/hive-deck/internal/ship"
+	"github.com/talkersoft/hive-deck/internal/stash"
 	"github.com/talkersoft/hive-deck/internal/sync"
 	"github.com/talkersoft/hive-deck/internal/teardown"
 )
@@ -38,15 +43,16 @@ the same search order.`,
 	}
 
 	root.AddCommand(
-		provisionCmd(),
+		initCmd(),
+		shipCmd(),
 		syncCmd(),
 		teardownCmd(),
 		pruneCmd(),
 		statusCmd(),
-		listCmd(),
-		decksCmd(),
-		prCmd(),
-		defaultCmd(),
+		listGroupCmd(),
+		nextCmd(),
+		stashGroupCmd(),
+		mcpCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -55,30 +61,95 @@ the same search order.`,
 	}
 }
 
-func provisionCmd() *cobra.Command {
+func initCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "provision <deck>",
-		Short: "Provision every repo in the deck (idempotent)",
-		Long: `Provision every declared repo in the deck.
+		Use:   "init <deck> <branch>",
+		Short: "Provision every repo in the deck and create a feature branch",
+		Long: `Provision every declared repo and create a feature branch across all of them.
 
-Idempotent — safe to run any number of times:
+Provision is idempotent:
   missing repo     → cloned
   dir without .git → restored in place (untracked files preserved)
   already cloned   → skipped
 
-GitHub create-if-missing is always on: for each repo that doesn't yet exist
-on github.com, ` + "`gh repo create --private --add-readme`" + ` runs before the clone.
-The ` + "`gh`" + ` CLI is a hard runtime dependency.`,
-		Args: cobra.ExactArgs(1),
+For already-provisioned repos, requires:
+  - on default branch (run hv default first if not)
+  - working tree clean and fully pushed
+  - branch name does not already exist in any repo
+
+After provision, every repo is checked out on <branch>.
+GitHub create-if-missing is always on.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
+			deck, branchName := args[0], args[1]
+			l, err := config.LoadDeck(deck)
+			if err != nil {
+				return err
+			}
+			if err := branch.PreFlightExisting(l, branchName); err != nil {
+				return err
+			}
+			if err := provision.Run(l, provision.Options{}); err != nil {
+				return err
+			}
+			if err := branch.CreateAll(l, branchName); err != nil {
+				return err
+			}
+			root, err := config.ExpandRoot(l.Setup.DecksRoot)
+			if err != nil {
+				return err
+			}
+			return mcp.Apply(root, l)
+		},
+	}
+}
+
+func shipCmd() *cobra.Command {
+	var title, body string
+	cmd := &cobra.Command{
+		Use:   "ship <deck> <message> --title <title> [--body <body>]",
+		Short: "Commit, push, and open pull requests for every repo in the deck",
+		Long: `For every repo in the deck:
+  has uncommitted changes  → git add -A + git commit -m <message> + git push
+  committed but not pushed → git push
+  ahead of origin/<default> → open PR with --title and --body
+  already clean and pushed  → skip
+
+Refuses to run if any repo is on the default branch — feature work only.
+Automatically sets upstream on first push so the branch is tracked on remote.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if title == "" {
+				return fmt.Errorf("--title is required")
+			}
 			l, err := config.LoadDeck(args[0])
 			if err != nil {
 				return err
 			}
-			return provision.Run(l, provision.Options{})
+			if err := ship.Run(l, ship.Options{
+				Message:             args[1],
+				Title:               title,
+				Body:                body,
+				DeleteBranchOnMerge: l.Setup.Ship.DeleteBranchOnMerge,
+				AutoMerge:           l.Setup.Ship.AutoMerge,
+			}); err != nil {
+				return err
+			}
+			if l.Setup.Ship.TeardownOnShip && l.Setup.Ship.AutoMerge {
+				fmt.Println()
+				return teardown.Run(l, teardown.Options{RequireMergedPR: false})
+			}
+			if l.Setup.Ship.RequireMergedPR && !l.Setup.Ship.AutoMerge {
+				fmt.Println("\nmerge-gate: PRs opened — merge them, then call hv next <deck> <branch> to transition")
+			}
+			return nil
 		},
 	}
+	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
+	cmd.Flags().StringVar(&body, "body", "", "PR body/description")
+	return cmd
 }
+
 
 func teardownCmd() *cobra.Command {
 	return &cobra.Command{
@@ -97,7 +168,7 @@ There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`
 			if err != nil {
 				return err
 			}
-			return teardown.Run(l, teardown.Options{})
+			return teardown.Run(l, teardown.Options{RequireMergedPR: l.Setup.Ship.RequireMergedPR})
 		},
 	}
 }
@@ -161,9 +232,18 @@ func statusCmd() *cobra.Command {
 	}
 }
 
-func listCmd() *cobra.Command {
+func listGroupCmd() *cobra.Command {
+	grp := &cobra.Command{
+		Use:   "list",
+		Short: "List repos, open pulls, or available decks",
+	}
+	grp.AddCommand(listReposCmd(), listPullsCmd(), listDecksCmd())
+	return grp
+}
+
+func listReposCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <deck>",
+		Use:   "repos <deck>",
 		Short: "List every repo declared by the deck with provisioned state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -181,6 +261,70 @@ func listCmd() *cobra.Command {
 			}
 			fmt.Printf("%-40s %-25s %s\n", "DEST", "MODULE", "PROVISIONED")
 			return walkListNode(l.DeckFile.Deck, wsDir, "", l)
+		},
+	}
+}
+
+func listPullsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pulls <deck>",
+		Short: "Show all open pull requests across every provisioned repo in the deck",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			if err := l.ValidateDeck(); err != nil {
+				return err
+			}
+			plan, err := resolve.Build(l)
+			if err != nil {
+				return err
+			}
+			total := 0
+			for _, repo := range plan.Repos {
+				if fi, serr := os.Stat(repo.Dest); serr != nil || !fi.IsDir() {
+					continue
+				}
+				prs := github.ListOpenPRs(repo.Dest)
+				for _, pr := range prs {
+					fmt.Printf("#%-4d %-30s %s\n", pr.Number, repo.Repo, pr.URL)
+					fmt.Printf("      branch: %-28s %s\n", pr.Branch, pr.Title)
+					total++
+				}
+			}
+			if total == 0 {
+				fmt.Println("no open pull requests")
+			}
+			return nil
+		},
+	}
+}
+
+func listDecksCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "decks",
+		Short: "List every deck file (*.yaml) in ~/.hv/",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			home, _, err := config.LoadSetup()
+			if err != nil {
+				return err
+			}
+			matches, err := filepath.Glob(filepath.Join(home, config.ConfigDir, "*.yaml"))
+			if err != nil {
+				return err
+			}
+			sort.Strings(matches)
+			for _, m := range matches {
+				base := filepath.Base(m)
+				if base == config.SetupFile || base == config.ModulesFile || base == config.MCPsFile || strings.HasSuffix(base, ".example") {
+					continue
+				}
+				fmt.Println(strings.TrimSuffix(base, ".yaml"))
+			}
+			return nil
 		},
 	}
 }
@@ -230,85 +374,94 @@ func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Load
 	return nil
 }
 
-func decksCmd() *cobra.Command {
+func nextCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "decks",
-		Short: "List every deck file (*.yaml) in ~/.hv/",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			home, _, err := config.LoadSetup()
-			if err != nil {
-				return err
-			}
-			matches, err := filepath.Glob(filepath.Join(home, config.ConfigDir, "*.yaml"))
-			if err != nil {
-				return err
-			}
-			sort.Strings(matches)
-			for _, m := range matches {
-				base := filepath.Base(m)
-				if base == config.SetupFile || strings.HasSuffix(base, ".example") {
-					continue
-				}
-				fmt.Println(strings.TrimSuffix(base, ".yaml"))
-			}
-			return nil
-		},
-	}
-}
+		Use:   "next <deck> <branch>",
+		Short: "Transition every repo to a new branch based on origin/<default>",
+		Long: `Transition from the current feature branch to a new one based on origin/<default>.
 
-func prCmd() *cobra.Command {
-	var title, body string
-	cmd := &cobra.Command{
-		Use:   "pr <deck> --title <title> [--body <body>]",
-		Short: "Open a pull request for every repo whose branch is ahead of origin/<default>",
-		Long: `For every provisioned repo in the deck:
-
-  dirty working tree          → abort (all repos checked first)
-  on default branch + ahead   → abort (create a branch for this work)
-  on default branch, no ahead → skip
-  on feature branch + ahead   → create PR with the given title/body
-  on feature branch, no ahead → skip
-  PR already open             → skip
-
-The same title and body are applied to every PR created.
-All created PR URLs are printed at the end.`,
-		Args: cobra.ExactArgs(1),
+All repos must be clean, pushed, and (when require_merged_pr is on) PRs merged.
+Fetches origin and creates <branch> from origin/<default> — local main is never checked out.
+Refuses if <branch> equals the default branch name (main/master).`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			if title == "" {
-				return fmt.Errorf("--title is required")
-			}
 			l, err := config.LoadDeck(args[0])
 			if err != nil {
 				return err
 			}
-			return pr.Run(l, pr.Options{
-				Title: title,
-				Body:  body,
+			return checkout.Run(l, checkout.Options{
+				RequireMergedPR: l.Setup.Ship.RequireMergedPR,
+				NextBranch:      args[1],
 			})
 		},
 	}
-	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
-	cmd.Flags().StringVar(&body, "body", "", "PR body/description")
-	return cmd
 }
 
-func defaultCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "default <deck>",
-		Short: "Switch every repo to its default branch after verifying all are clean",
-		Long: `Verifies every repo in the deck is fully clean (committed, pushed, no stash,
-no detached HEAD), then switches each one to its default branch and pulls.
+func stashGroupCmd() *cobra.Command {
+	grp := &cobra.Command{
+		Use:   "stash",
+		Short: "Stash/restore uncommitted changes across repos (deadlock escape hatch)",
+	}
+	grp.AddCommand(stashPushCmd(), stashPopCmd())
+	return grp
+}
 
-Aborts before touching anything if any repo fails the clean check.
-Repos already on the default branch are pulled but not checked out.`,
+func stashPushCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "push <deck>",
+		Short: "Stash uncommitted changes across all repos with a merged PR",
+		Long: `Escape hatch for the deadlock where a branch has a merged PR but uncommitted
+changes block hv next. Runs git stash push on every dirty repo.
+Every dirty repo must have a merged or closed PR — otherwise use hv ship.
+After stashing: run hv next to transition, then hv stash pop to restore.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			l, err := config.LoadDeck(args[0])
 			if err != nil {
 				return err
 			}
-			return checkout.Run(l, checkout.Options{})
+			return stash.Push(l)
+		},
+	}
+}
+
+func stashPopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pop <deck>",
+		Short: "Restore stashed changes across all repos that have a stash entry",
+		Long:  `Runs git stash pop on every repo that has a stash entry. Use after hv next.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			return stash.Pop(l)
+		},
+	}
+}
+
+func mcpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "mcp <deck>",
+		Short: "Write MCP server config to {decks_root}/.claude/settings.json",
+		Long: `Resolves the MCPs listed in the deck file against ~/.hv/mcps.yaml and
+merges an mcpServers block into {decks_root}/.claude/settings.json.
+All other keys in that file are preserved.
+
+Requires mcp_manager.enabled: true in config.yaml.
+Also runs automatically at the end of hv init when enabled.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			l, err := config.LoadDeck(args[0])
+			if err != nil {
+				return err
+			}
+			root, err := config.ExpandRoot(l.Setup.DecksRoot)
+			if err != nil {
+				return err
+			}
+			return mcp.Apply(root, l)
 		},
 	}
 }

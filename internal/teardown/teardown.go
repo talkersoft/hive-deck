@@ -18,16 +18,20 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/talkersoft/hive-deck/internal/config"
 	"github.com/talkersoft/hive-deck/internal/git"
+	"github.com/talkersoft/hive-deck/internal/github"
 	"github.com/talkersoft/hive-deck/internal/resolve"
 	"github.com/talkersoft/hive-deck/internal/workspace"
 )
 
 type Options struct {
-	Out io.Writer
+	Out             io.Writer
+	RequireMergedPR bool
 }
 
 func Run(l *config.Loaded, opts Options) error {
@@ -104,6 +108,31 @@ func Run(l *config.Loaded, opts Options) error {
 	if len(dirty) > 0 {
 		printDirty(opts.Out, dirty)
 		return fmt.Errorf("aborting: %d repo(s) have tracked work that would be lost — commit/push or clean them first (untracked files would be preserved)", len(dirty))
+	}
+
+	if opts.RequireMergedPR {
+		var openPRs []string
+		for _, r := range active {
+			branch := repoBranch(r.Dest)
+			defBranch := repoDefaultBranch(r.Dest)
+			if branch == "" || branch == defBranch {
+				continue
+			}
+			ahead := repoCommitsAhead(r.Dest, "origin/"+defBranch)
+			if ahead == 0 {
+				continue
+			}
+			info := github.GetPRInfo(r.Dest, branch)
+			if info.State == "OPEN" {
+				openPRs = append(openPRs, fmt.Sprintf("%s: PR %s is still open", r.Repo, info.URL))
+			}
+		}
+		if len(openPRs) > 0 {
+			for _, msg := range openPRs {
+				fmt.Fprintf(opts.Out, "  open-pr  %s\n", msg)
+			}
+			return fmt.Errorf("aborting: %d repo(s) have open PRs — merge them before teardown (require_merged_pr: true)", len(openPRs))
+		}
 	}
 
 	if totalRepos == 0 {
@@ -198,14 +227,49 @@ func Status(l *config.Loaded, out io.Writer) error {
 				fmt.Fprintf(out, "  MISSING  %s\n", r.Dest)
 				continue
 			}
+			branch := repoBranch(r.Dest)
+			defBranch := repoDefaultBranch(r.Dest)
+			onFeature := branch != "" && branch != defBranch
+			ahead := 0
+			if onFeature {
+				ahead = repoCommitsAhead(r.Dest, "origin/"+defBranch)
+			}
+
+			// Repos on a feature branch with no upstream and no commits are not
+			// truly dirty — the branch was created but never used. Treat as clean.
 			st := git.Check(r.Dest, r.Repo)
-			if st.Clean {
-				fmt.Fprintf(out, "  clean    %s\n", r.Dest)
+			noUpstreamOnly := !st.Clean && len(st.Reasons) == 1 &&
+				strings.Contains(st.Reasons[0], "no upstream branch configured") &&
+				ahead == 0
+
+			if st.Clean || noUpstreamOnly {
+				if onFeature && ahead > 0 {
+					info := github.GetPRInfo(r.Dest, branch)
+					switch info.State {
+					case "":
+						fmt.Fprintf(out, "  UNSHIPPED %s  [%s]\n", r.Dest, branch)
+						fmt.Fprintf(out, "             - %d commit(s) with no pull request — run hv_ship\n", ahead)
+					case "OPEN":
+						fmt.Fprintf(out, "  clean    %s  [%s, pr: open → %s]\n", r.Dest, branch, info.URL)
+						cleanInNode++
+						grandClean++
+					case "MERGED":
+						fmt.Fprintf(out, "  clean    %s  [%s, pr: merged — run hv_default]\n", r.Dest, branch)
+						cleanInNode++
+						grandClean++
+					}
+					continue
+				}
+				if onFeature {
+					fmt.Fprintf(out, "  clean    %s  [%s]\n", r.Dest, branch)
+				} else {
+					fmt.Fprintf(out, "  clean    %s\n", r.Dest)
+				}
 				cleanInNode++
 				grandClean++
 				continue
 			}
-			fmt.Fprintf(out, "  DIRTY    %s\n", r.Dest)
+			fmt.Fprintf(out, "  DIRTY    %s  [%s]\n", r.Dest, branch)
 			for _, reason := range st.Reasons {
 				fmt.Fprintf(out, "             - %s\n", reason)
 			}
@@ -318,6 +382,46 @@ func printDirty(out io.Writer, dirty []dirtyRepo) {
 			fmt.Fprintf(out, "      - %s\n", r)
 		}
 	}
+}
+
+func repoBranch(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	b := strings.TrimSpace(string(out))
+	if b == "HEAD" {
+		return ""
+	}
+	return b
+}
+
+func repoDefaultBranch(dir string) string {
+	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "main"
+	}
+	parts := strings.Split(strings.TrimSpace(string(out)), "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return "main"
+}
+
+func repoCommitsAhead(dir, ref string) int {
+	cmd := exec.Command("git", "rev-list", "--count", ref+"..HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	n := 0
+	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
+	return n
 }
 
 func dirExists(path string) (bool, error) {

@@ -5,11 +5,11 @@
     },
     "hv.deck.operator": {
       "extends": "hv.deck",
-      "tools": ["provision", "sync", "default"]
+      "tools": ["init", "ship", "sync", "default", "stash", "unstash", "list-pulls"]
     },
     "hv.deck.pro": {
       "extends": "hv.deck.operator",
-      "tools": ["pr", "teardown"]
+      "tools": ["teardown", "prune", "mcp"]
     }
   }
 }

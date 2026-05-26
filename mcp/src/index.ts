@@ -18,21 +18,31 @@ import { activeProfileName, resolveProfile } from "./profiles.js";
 import * as status from "./tools/status.js";
 import * as list from "./tools/list.js";
 import * as decks from "./tools/decks.js";
-import * as provision from "./tools/provision.js";
+import * as init from "./tools/init.js";
+import * as ship from "./tools/ship.js";
 import * as sync from "./tools/sync.js";
 import * as defaultBranch from "./tools/default.js";
-import * as pr from "./tools/pr.js";
+import * as stash from "./tools/stash.js";
+import * as unstash from "./tools/unstash.js";
+import * as listPulls from "./tools/listPulls.js";
 import * as teardown from "./tools/teardown.js";
+import * as prune from "./tools/prune.js";
+import * as mcpTool from "./tools/mcp.js";
 
 const allTools: Record<string, { register: (server: McpServer) => void }> = {
   status,
   list,
   decks,
-  provision,
+  init,
+  ship,
   sync,
   default: defaultBranch,
-  pr,
+  stash,
+  unstash,
+  "list-pulls": listPulls,
   teardown,
+  prune,
+  mcp: mcpTool,
 };
 
 const profileName = activeProfileName();

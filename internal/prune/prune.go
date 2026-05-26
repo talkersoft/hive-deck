@@ -76,6 +76,10 @@ func Run(l *config.Loaded, opts Options) error {
 
 	if len(undeclared) == 0 {
 		fmt.Fprintln(opts.Out, "prune: nothing to remove — all on-disk repos are declared")
+		if err := workspace.Regenerate(plan, l); err != nil {
+			return err
+		}
+		fmt.Fprintln(opts.Out, "regenerated .code-workspace file")
 		return nil
 	}
 

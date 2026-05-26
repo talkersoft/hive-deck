@@ -14,12 +14,14 @@ const (
 	ConfigDir   = ".hv"
 	SetupFile   = "config.yaml"
 	ModulesFile = "modules.yaml"
+	MCPsFile    = "mcps.yaml"
 	LaunchDir   = "hive-workspace"
 )
 
 // DeckFile is the parsed content of a deck YAML file (e.g. cloud-manager.yaml).
 // The filename stem determines the deck folder name; deck: is the folder tree.
 type DeckFile struct {
+	MCPs []string `yaml:"mcps"` // names referencing keys in mcps.yaml
 	Deck TreeNode `yaml:"deck"`
 }
 
@@ -83,6 +85,29 @@ type Setup struct {
 	ClaudeSettings ClaudeSettings    `yaml:"claude_settings"`
 	Gitignore      GitignoreConfig   `yaml:"gitignore"`
 	Readme         ReadmeConfig      `yaml:"readme"`
+	Ship       ShipConfig       `yaml:"ship"`
+	MCPManager MCPManagerConfig `yaml:"mcp_manager"`
+}
+
+// ShipConfig controls behaviour of `hv ship`.
+type ShipConfig struct {
+	DeleteBranchOnMerge bool `yaml:"delete_branch_on_merge"`
+	RequireMergedPR     bool `yaml:"require_merged_pr"`
+	AutoMerge           bool `yaml:"auto_merge"`
+	TeardownOnShip      bool `yaml:"teardown_on_ship"`
+}
+
+// MCPManagerConfig controls MCP server config writing at init time.
+type MCPManagerConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// MCPDefinition is a single MCP server entry from mcps.yaml.
+// Relative Args entries are resolved against decks_root at apply time.
+type MCPDefinition struct {
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Env     map[string]string `yaml:"env"`
 }
 
 // GitignoreConfig lists patterns written to every provisioned folder's .gitignore.
@@ -115,8 +140,9 @@ type ClaudeSettings struct {
 type Loaded struct {
 	Home     string
 	DeckFile DeckFile
-	DeckName string // filename stem, e.g. "cloud-manager" from "cloud-manager.yaml"
+	DeckName string            // filename stem, e.g. "cloud-manager" from "cloud-manager.yaml"
 	Modules  map[string]Module // from modules.yaml
+	MCPDefs  map[string]MCPDefinition // from mcps.yaml; empty map when file is absent
 	Setup    Setup
 	DeckPath string
 }
@@ -154,14 +180,43 @@ func LoadDeck(name string) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
+	mcpDefs, err := LoadMCPs()
+	if err != nil {
+		return nil, err
+	}
 	return &Loaded{
 		Home:     home,
 		DeckFile: df,
 		DeckName: deckName,
 		Modules:  mods,
+		MCPDefs:  mcpDefs,
 		Setup:    setup,
 		DeckPath: deckPath,
 	}, nil
+}
+
+// LoadMCPs reads mcps.yaml using the CWD-first search order.
+// Returns an empty map (not an error) if the file is absent.
+func LoadMCPs() (map[string]MCPDefinition, error) {
+	path, err := findConfigFile(MCPsFile)
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return make(map[string]MCPDefinition), nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var defs map[string]MCPDefinition
+	if err := yaml.Unmarshal(b, &defs); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if defs == nil {
+		defs = make(map[string]MCPDefinition)
+	}
+	return defs, nil
 }
 
 // LoadModules reads modules.yaml using the CWD-first search order.
@@ -202,7 +257,7 @@ func resolveDeckPath(name string) (path, stem string, err error) {
 	if !strings.HasSuffix(filename, ".yaml") {
 		filename += ".yaml"
 	}
-	if filename == SetupFile || filename == ModulesFile {
+	if filename == SetupFile || filename == ModulesFile || filename == MCPsFile {
 		return "", "", fmt.Errorf("deck name %q is reserved", name)
 	}
 	p, err := findConfigFile(filename)
