@@ -15,6 +15,7 @@ import (
 	"github.com/talkersoft/hive-deck/internal/config"
 	"github.com/talkersoft/hive-deck/internal/github"
 	"github.com/talkersoft/hive-deck/internal/mcp"
+	"github.com/talkersoft/hive-deck/internal/namegen"
 	"github.com/talkersoft/hive-deck/internal/provision"
 	"github.com/talkersoft/hive-deck/internal/prune"
 	"github.com/talkersoft/hive-deck/internal/resolve"
@@ -63,7 +64,7 @@ the same search order.`,
 
 func initCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "init <deck> <branch>",
+		Use:   "init <deck> [branch]",
 		Short: "Provision every repo in the deck and create a feature branch",
 		Long: `Provision every declared repo and create a feature branch across all of them.
 
@@ -73,15 +74,20 @@ Provision is idempotent:
   already cloned   → skipped
 
 For already-provisioned repos, requires:
-  - on default branch (run hv default first if not)
+  - on default branch (run hv next first if not)
   - working tree clean and fully pushed
   - branch name does not already exist in any repo
 
 After provision, every repo is checked out on <branch>.
+If <branch> is omitted, a name is generated automatically.
 GitHub create-if-missing is always on.`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			deck, branchName := args[0], args[1]
+			deck := args[0]
+			branchName := namegen.Generate()
+			if len(args) == 2 {
+				branchName = args[1]
+			}
 			l, err := config.LoadDeck(deck)
 			if err != nil {
 				return err
@@ -140,9 +146,15 @@ Automatically sets upstream on first push so the branch is tracked on remote.`,
 				return teardown.Run(l, teardown.Options{RequireMergedPR: false})
 			}
 			if l.Setup.Ship.RequireMergedPR && !l.Setup.Ship.AutoMerge {
-				fmt.Println("\nmerge-gate: PRs opened — merge them, then call hv next <deck> <branch> to transition")
+				fmt.Println("\nmerge-gate: PRs opened — merge them, then run hv next to transition")
+				return nil
 			}
-			return nil
+			nextBranch := namegen.Generate()
+			fmt.Println()
+			return checkout.Run(l, checkout.Options{
+				RequireMergedPR: false,
+				NextBranch:      nextBranch,
+			})
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
@@ -376,22 +388,27 @@ func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Load
 
 func nextCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "next <deck> <branch>",
+		Use:   "next <deck> [branch]",
 		Short: "Transition every repo to a new branch based on origin/<default>",
 		Long: `Transition from the current feature branch to a new one based on origin/<default>.
 
 All repos must be clean, pushed, and (when require_merged_pr is on) PRs merged.
 Fetches origin and creates <branch> from origin/<default> — local main is never checked out.
-Refuses if <branch> equals the default branch name (main/master).`,
-		Args: cobra.ExactArgs(2),
+Refuses if <branch> equals the default branch name (main/master).
+If <branch> is omitted, a name is generated automatically.`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			l, err := config.LoadDeck(args[0])
 			if err != nil {
 				return err
 			}
+			nextBranch := namegen.Generate()
+			if len(args) == 2 {
+				nextBranch = args[1]
+			}
 			return checkout.Run(l, checkout.Options{
 				RequireMergedPR: l.Setup.Ship.RequireMergedPR,
-				NextBranch:      args[1],
+				NextBranch:      nextBranch,
 			})
 		},
 	}
