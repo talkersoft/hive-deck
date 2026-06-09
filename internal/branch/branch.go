@@ -45,7 +45,7 @@ func Run(l *config.Loaded, branchName string) error {
 		return err
 	}
 
-	return createAll(plan.Repos, branchName, plan.Deck)
+	return createAll(plan.Repos, branchName, plan.Deck, l.DeckFile.Branch)
 }
 
 // PreFlightExisting checks only repos already on disk — used by init before
@@ -80,7 +80,7 @@ func CreateAll(l *config.Loaded, branchName string) error {
 			repos = append(repos, r)
 		}
 	}
-	return createAll(repos, branchName, plan.Deck)
+	return createAll(repos, branchName, plan.Deck, l.DeckFile.Branch)
 }
 
 // preFlightRepos checks a set of repos: on default branch, clean, and branch
@@ -93,16 +93,6 @@ func preFlightRepos(repos []resolve.RepoPlan, branchName string) error {
 	var problems []problem
 
 	for _, r := range repos {
-		def := defaultBranch(r.Dest)
-		current, err := currentBranch(r.Dest)
-		if err != nil {
-			problems = append(problems, problem{r.Repo, fmt.Sprintf("could not read branch: %v", err)})
-			continue
-		}
-		if current != def {
-			problems = append(problems, problem{r.Repo, fmt.Sprintf("on %q, not default branch %q — run hv default first", current, def)})
-			continue
-		}
 		st := git.Check(r.Dest, r.Repo)
 		if !st.Clean {
 			for _, reason := range st.Reasons {
@@ -125,11 +115,19 @@ func preFlightRepos(repos []resolve.RepoPlan, branchName string) error {
 	return nil
 }
 
-func createAll(repos []resolve.RepoPlan, branchName, deck string) error {
+func createAll(repos []resolve.RepoPlan, branchName, deck, deckBranch string) error {
 	fmt.Printf("branch: %s → %s repos=%d\n", deck, branchName, len(repos))
 	for _, r := range repos {
-		if err := checkoutNewBranch(r.Dest, branchName); err != nil {
-			return fmt.Errorf("%s: checkout -b %s: %w", r.Repo, branchName, err)
+		if err := fetchOrigin(r.Dest); err != nil {
+			return fmt.Errorf("%s: fetch: %w", r.Repo, err)
+		}
+		base := deckBranch
+		if base == "" {
+			base = defaultBranch(r.Dest)
+		}
+		remoteRef := "origin/" + base
+		if err := checkoutNewBranch(r.Dest, branchName, remoteRef); err != nil {
+			return fmt.Errorf("%s: checkout -b %s %s: %w", r.Repo, branchName, remoteRef, err)
 		}
 		fmt.Printf("  branch  %-30s %s\n", r.Repo, branchName)
 	}
@@ -142,8 +140,8 @@ func branchExists(dir, branchName string) bool {
 	return cmd.Run() == nil
 }
 
-func checkoutNewBranch(dir, branchName string) error {
-	cmd := exec.Command("git", "checkout", "-b", branchName)
+func checkoutNewBranch(dir, branchName, from string) error {
+	cmd := exec.Command("git", "checkout", "-b", branchName, from)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -152,16 +150,14 @@ func checkoutNewBranch(dir, branchName string) error {
 	return nil
 }
 
-func currentBranch(dir string) (string, error) {
-	out, err := runGit(dir, "rev-parse", "--abbrev-ref", "HEAD")
+func fetchOrigin(dir string) error {
+	cmd := exec.Command("git", "fetch", "origin")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", err
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
-	b := strings.TrimSpace(out)
-	if b == "HEAD" {
-		return "", fmt.Errorf("detached HEAD")
-	}
-	return b, nil
+	return nil
 }
 
 func defaultBranch(dir string) string {

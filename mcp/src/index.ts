@@ -28,6 +28,14 @@ import * as listPulls from "./tools/listPulls.js";
 import * as teardown from "./tools/teardown.js";
 import * as prune from "./tools/prune.js";
 import * as mcpTool from "./tools/mcp.js";
+import * as promote from "./tools/workflow.js";
+import * as orchestrateCreate from "./tools/workflow_create.js";
+import * as orchestrateRun from "./tools/workflow_run.js";
+import * as orchestratePlan from "./tools/workflow_plan.js";
+import * as orchestrateList from "./tools/workflow_list.js";
+import * as awaitMerge from "./tools/await_merge.js";
+import * as repoList from "./tools/repo_list.js";
+import * as repoAdd from "./tools/repo_add.js";
 
 const allTools: Record<string, { register: (server: McpServer) => void }> = {
   status,
@@ -43,6 +51,14 @@ const allTools: Record<string, { register: (server: McpServer) => void }> = {
   teardown,
   prune,
   mcp: mcpTool,
+  promote,
+  "orchestrate-create": orchestrateCreate,
+  "orchestrate-run": orchestrateRun,
+  "orchestrate-plan": orchestratePlan,
+  "orchestrate-list": orchestrateList,
+  "await-merge": awaitMerge,
+  "repo-list": repoList,
+  "repo-add": repoAdd,
 };
 
 const profileName = activeProfileName();

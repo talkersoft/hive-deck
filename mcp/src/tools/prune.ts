@@ -14,9 +14,7 @@ Use dry_run to preview what would be removed without removing anything.`,
       dry_run: z.boolean().optional().describe("Preview what would be removed without removing anything. Defaults to false."),
     },
     async ({ deck, dry_run }) => {
-      const args = ["prune", deck];
-      if (dry_run) args.push("--dry-run");
-      const { ok: success, output } = runHv(...args);
+      const { ok: success, output } = runHv({ op: "prune", deck, ...(dry_run ? { dry_run } : {}) });
       if (!success) {
         const hint = [
           "Prune aborted — one or more undeclared repos have uncommitted or unpushed work. Next steps:",

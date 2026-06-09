@@ -13,7 +13,7 @@ Requires mcp_manager.enabled: true in config.yaml.`,
       deck: z.string().describe("Deck name to apply MCP config for (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("mcp", deck);
+      const { ok: success, output } = runHv({ op: "mcp", deck });
       if (!success) {
         const hint = [
           "MCP config write failed. Common causes:",

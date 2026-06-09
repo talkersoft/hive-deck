@@ -1,15 +1,17 @@
 {
   "profiles": {
-    "hv.deck": {
-      "tools": ["status", "list", "decks"]
+    "decks": {
+      "tools": [
+        "status", "list", "decks",
+        "init", "ship", "sync", "default",
+        "stash", "unstash", "list-pulls",
+        "teardown", "prune", "mcp", "await-merge",
+        "repo-list", "repo-add"
+      ]
     },
-    "hv.deck.operator": {
-      "extends": "hv.deck",
-      "tools": ["init", "ship", "sync", "default", "stash", "unstash", "list-pulls"]
-    },
-    "hv.deck.pro": {
-      "extends": "hv.deck.operator",
-      "tools": ["teardown", "prune", "mcp"]
+    "workflows": {
+      "extends": "decks",
+      "tools": ["promote", "workflow-run", "workflow-plan", "workflow-list"]
     }
   }
 }

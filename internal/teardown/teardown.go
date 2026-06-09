@@ -254,7 +254,7 @@ func Status(l *config.Loaded, out io.Writer) error {
 						cleanInNode++
 						grandClean++
 					case "MERGED":
-						fmt.Fprintf(out, "  clean    %s  [%s, pr: merged — run hv_default]\n", r.Dest, branch)
+						fmt.Fprintf(out, "  clean    %s  [%s, pr: merged — run hv_next]\n", r.Dest, branch)
 						cleanInNode++
 						grandClean++
 					}

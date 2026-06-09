@@ -14,8 +14,7 @@ WARNING: This removes source files. Only run when all work is committed and push
       deck: z.string().describe("Deck name to tear down (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const args = ["teardown", deck];
-      const { ok: success, output } = runHv(...args);
+      const { ok: success, output } = runHv({ op: "teardown", deck });
 
       if (!success) {
         const hint = [

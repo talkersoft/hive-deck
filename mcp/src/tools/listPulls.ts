@@ -12,7 +12,7 @@ Returns PR number, repo, branch, title, and URL for each open PR.`,
       deck: z.string().describe("Deck name (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("list", "pulls", deck);
+      const { ok: success, output } = runHv({ op: "list_pulls", deck });
       if (!success) {
         return err(output);
       }

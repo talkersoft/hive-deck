@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/talkersoft/hive-deck/internal/config"
 )
@@ -36,15 +37,20 @@ func Apply(decksRoot string, l *config.Loaded) error {
 		if !ok {
 			return fmt.Errorf("mcp registry %q listed in deck but not defined in mcps.yaml", regName)
 		}
+		deckRoot := filepath.Join(decksRoot, l.DeckName)
 		for name, def := range reg.Servers {
 			resolved := make([]string, len(def.Args))
 			for i, arg := range def.Args {
-				resolved[i] = resolveArg(decksRoot, arg)
+				resolved[i] = resolveArg(decksRoot, deckRoot, arg)
+			}
+			resolvedEnv := make(map[string]string, len(def.Env))
+			for k, v := range def.Env {
+				resolvedEnv[k] = resolveEnvVal(deckRoot, decksRoot, v)
 			}
 			servers[name] = &mcpServer{
 				Command: def.Command,
 				Args:    resolved,
-				Env:     def.Env,
+				Env:     resolvedEnv,
 			}
 		}
 	}
@@ -53,28 +59,30 @@ func Apply(decksRoot string, l *config.Loaded) error {
 		return nil
 	}
 
-	deckFile := filepath.Join(decksRoot, l.DeckName, mcpFile)
-	if err := writeFile(deckFile, servers, false); err != nil {
-		return err
-	}
-	fmt.Printf("mcp: wrote %d server(s) to %s\n", len(servers), deckFile)
-
-	if l.Setup.Deck.RootMCPEnabled() {
+	if l.Setup.Workspace.RootMCPEnabled() {
 		rootFile := filepath.Join(decksRoot, mcpFile)
-		if err := writeFile(rootFile, servers, true); err != nil {
+		mergeRoot := l.Setup.MCPManager.RootMCPMode == "merge"
+		if err := writeFile(rootFile, servers, mergeRoot); err != nil {
 			return err
 		}
-		fmt.Printf("mcp: merged %d server(s) into %s\n", len(servers), rootFile)
+		action := "wrote"
+		if mergeRoot {
+			action = "merged"
+		}
+		fmt.Printf("mcp: %s %d server(s) into %s\n", action, len(servers), rootFile)
 	}
 
 	return nil
 }
 
 // resolveArg resolves a single MCP arg to its final value.
-// Absolute paths are returned unchanged. npm scoped packages (@scope/pkg)
-// and flags (--flag) are not file paths and are returned as-is.
+// {{DecksRoot}} and {{DeckRoot}} tokens are expanded first.
+// Absolute paths are returned unchanged after expansion. npm scoped packages
+// (@scope/pkg) and flags (--flag) are not file paths and are returned as-is.
 // Relative paths are joined with decksRoot.
-func resolveArg(decksRoot, arg string) string {
+func resolveArg(decksRoot, deckRoot, arg string) string {
+	arg = strings.ReplaceAll(arg, "{{DecksRoot}}", decksRoot)
+	arg = strings.ReplaceAll(arg, "{{DeckRoot}}", deckRoot)
 	if filepath.IsAbs(arg) {
 		return arg
 	}
@@ -82,6 +90,15 @@ func resolveArg(decksRoot, arg string) string {
 		return arg
 	}
 	return filepath.Join(decksRoot, arg)
+}
+
+// resolveEnvVal expands {{DeckRoot}} and {{DecksRoot}} in env var values.
+// {{DeckRoot}}  = decksRoot/deckName  (e.g. ~/workspace/hive-deck-pro)
+// {{DecksRoot}} = decksRoot           (e.g. ~/workspace) — deck-independent
+func resolveEnvVal(deckRoot, decksRoot, val string) string {
+	val = strings.ReplaceAll(val, "{{DeckRoot}}", deckRoot)
+	val = strings.ReplaceAll(val, "{{DecksRoot}}", decksRoot)
+	return val
 }
 
 // writeFile writes servers into a .mcp.json file.

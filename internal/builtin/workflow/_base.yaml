@@ -1,0 +1,21 @@
+type: workflow
+
+mcps:
+  fragments:
+    - "@hive-deck-mcp"
+
+init:
+  fragments:
+    - "@status-check"
+    - "@folder-structure"
+    - "@write-orch"
+    - "@write-task-0000"
+    - "@write-test-0000"
+
+custom_phases: "{{.Phases}}"
+
+post:
+  fragments:
+    - "@write-result-lessons"
+    - "@key-rules"
+    - "@pr-mode-instructions"

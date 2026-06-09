@@ -12,6 +12,31 @@ import (
 	"strings"
 )
 
+// EnsureRemoteBranch ensures branch exists on origin. No-op if already present.
+// If the local branch exists it is pushed directly; otherwise the branch is
+// created on the remote from origin/HEAD.
+func EnsureRemoteBranch(dir, branch string) error {
+	out, err := exec.Command("git", "-C", dir, "ls-remote", "--heads", "origin", "refs/heads/"+branch).Output()
+	if err != nil {
+		return fmt.Errorf("ls-remote: %w", err)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		return nil // already exists on remote
+	}
+	if exec.Command("git", "-C", dir, "rev-parse", "--verify", branch).Run() == nil {
+		out2, err2 := exec.Command("git", "-C", dir, "push", "origin", branch+":refs/heads/"+branch).CombinedOutput()
+		if err2 != nil {
+			return fmt.Errorf("push %s to origin: %s", branch, strings.TrimSpace(string(out2)))
+		}
+		return nil
+	}
+	out3, err3 := exec.Command("git", "-C", dir, "push", "origin", "refs/remotes/origin/HEAD:refs/heads/"+branch).CombinedOutput()
+	if err3 != nil {
+		return fmt.Errorf("push %s to origin: %s", branch, strings.TrimSpace(string(out3)))
+	}
+	return nil
+}
+
 // Pull performs `git pull` in the repo at dir, streaming output to the caller.
 func Pull(dir string) error {
 	cmd := exec.Command("git", "pull")

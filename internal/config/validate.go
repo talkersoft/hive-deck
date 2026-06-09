@@ -16,13 +16,23 @@ func (l *Loaded) ValidateDeck() error {
 	if empty {
 		return fmt.Errorf("deck %q: deck: tree is empty", l.DeckName)
 	}
-	if l.Setup.Deck.Root == "" {
-		return fmt.Errorf("deck.root is not set in ~/.hv/config.yaml")
+	if l.Setup.Workspace.Root == "" {
+		return fmt.Errorf("workspace.root is not set in ~/.hv/config.yaml")
 	}
-	if l.Setup.DefaultBranch == "" {
-		return fmt.Errorf("default_branch is not set in ~/.hv/config.yaml")
+	if l.DeckFile.ClaudeProfile != "" {
+		if _, ok := l.ClaudeProfiles[l.DeckFile.ClaudeProfile]; !ok {
+			return fmt.Errorf("deck %q: claude_profile %q is not defined in claude-profiles.yaml", l.DeckName, l.DeckFile.ClaudeProfile)
+		}
 	}
-	return l.validateNode("", l.DeckFile.Deck)
+	if l.Setup.Workspace.Profile != "" {
+		if _, ok := l.ClaudeProfiles[l.Setup.Workspace.Profile]; !ok {
+			return fmt.Errorf("workspace.profile %q is not defined in claude-profiles.yaml", l.Setup.Workspace.Profile)
+		}
+	}
+	if err := l.validateNode("", l.DeckFile.Deck); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (l *Loaded) validateNode(nodePath string, node TreeNode) error {
@@ -85,6 +95,12 @@ func (l *Loaded) validateNode(nodePath string, node TreeNode) error {
 	for _, target := range node.Symlinks {
 		if target == "" {
 			return fmt.Errorf("node %q: symlinks entry must not be empty", display)
+		}
+	}
+
+	if node.GitignoreRuleset != "" {
+		if _, ok := l.Setup.GitignoreRulesets[node.GitignoreRuleset]; !ok {
+			return fmt.Errorf("node %q: gitignore_ruleset %q is not defined in config.yaml gitignore_rulesets", display, node.GitignoreRuleset)
 		}
 	}
 

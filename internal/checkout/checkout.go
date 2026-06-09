@@ -91,6 +91,14 @@ func Run(l *config.Loaded, opts Options) error {
 			}
 		}
 
+		// When require_merged_pr is set, also block on any open PRs across all
+		// branches — not just the current one.
+		if opts.RequireMergedPR && len(reasons) == 0 {
+			for _, pr := range github.ListOpenPRs(rm.r.Dest) {
+				reasons = append(reasons, fmt.Sprintf("PR #%d (%s) is still open — merge it before transitioning", pr.Number, pr.URL))
+			}
+		}
+
 		if len(reasons) > 0 {
 			problems = append(problems, problem{rm.r.Repo, reasons})
 		}
@@ -107,17 +115,45 @@ func Run(l *config.Loaded, opts Options) error {
 	}
 
 	// Phase 2: fetch origin and create new branch from origin/<default>.
+	// Record each repo's current branch before switching so we can roll back on failure.
+	savedBranch := make(map[string]string, len(repos))
+	for _, rm := range repos {
+		if br, err := currentBranch(rm.r.Dest); err == nil {
+			savedBranch[rm.r.Dest] = br
+		}
+	}
+
+	var switched []string
+	rollback := func(origErr error) error {
+		if len(switched) == 0 {
+			return origErr
+		}
+		fmt.Fprintf(os.Stderr, "error: rolling back %d repo(s)\n", len(switched))
+		for i := len(switched) - 1; i >= 0; i-- {
+			dest := switched[i]
+			if prev, ok := savedBranch[dest]; ok {
+				if rbErr := gitCheckout(dest, prev); rbErr != nil {
+					fmt.Fprintf(os.Stderr, "  rollback failed %-30s: %v\n", dest, rbErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "  rollback         %-30s → %s\n", dest, prev)
+				}
+			}
+		}
+		return origErr
+	}
+
 	fmt.Printf("next: %s → %s repos=%d\n", plan.Deck, opts.NextBranch, len(repos))
 	for _, rm := range repos {
 		if err := gitFetch(rm.r.Dest); err != nil {
 			fmt.Fprintf(os.Stderr, "  error %-30s fetch: %v\n", rm.r.Repo, err)
-			continue
+			return rollback(fmt.Errorf("fetch failed for %s: %w", rm.r.Repo, err))
 		}
 		remoteRef := "origin/" + rm.defaultBranch
 		if err := gitCheckoutNewFrom(rm.r.Dest, opts.NextBranch, remoteRef); err != nil {
 			fmt.Fprintf(os.Stderr, "  error %-30s checkout -b %s %s: %v\n", rm.r.Repo, opts.NextBranch, remoteRef, err)
-			continue
+			return rollback(fmt.Errorf("checkout failed for %s: %w", rm.r.Repo, err))
 		}
+		switched = append(switched, rm.r.Dest)
 		fmt.Printf("  next  %-30s → %s\n", rm.r.Repo, opts.NextBranch)
 	}
 
@@ -169,6 +205,16 @@ func commitsAhead(dir, ref string) int {
 
 func gitFetch(dir string) error {
 	cmd := exec.Command("git", "fetch", "origin")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func gitCheckout(dir, branch string) error {
+	cmd := exec.Command("git", "checkout", branch)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

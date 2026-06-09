@@ -1,6 +1,6 @@
 {
   "name": "hive-deck-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hive Deck MCP server — thin wrapper around the hv CLI",
   "type": "module",
   "main": "dist/index.js",

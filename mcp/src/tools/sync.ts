@@ -12,8 +12,7 @@ Run hv_status first if unsure whether the workspace is clean.`,
       deck: z.string().describe("Deck name to sync (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const args = ["sync", deck];
-      const { ok: success, output } = runHv(...args);
+      const { ok: success, output } = runHv({ op: "sync", deck });
       if (!success) {
         const hint = [
           "Sync aborted — one or more repos are not clean. Next steps:",

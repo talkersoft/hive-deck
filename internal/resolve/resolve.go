@@ -15,14 +15,21 @@ import (
 
 // RepoPlan describes a single repo to be cloned (or already cloned).
 type RepoPlan struct {
-	Deck       string
-	NodePath   string // relative path from workspace root, e.g. "vm-infra/cloud-manager"
-	Module     string // module name if from modules:, else ""
-	Repo       string
-	URL        string // resolved clone URL
-	Branch     string // resolved branch
-	Dest       string // absolute destination path on disk
-	GitHubSlug string // "<owner>/<repo>" if the org is on github.com, else ""
+	Deck             string
+	NodePath         string // relative path from workspace root, e.g. "vm-infra/cloud-manager"
+	Module           string // module name if from modules:, else ""
+	Repo             string
+	URL              string // resolved clone URL
+	Branch           string // resolved branch
+	Dest             string // absolute destination path on disk
+	GitHubSlug       string // "<owner>/<repo>" if the org is on github.com, else ""
+	GitignoreRuleset string // named ruleset from config.yaml gitignore_rulesets; "" means global default
+}
+
+// NodePlan describes a folder in the deck tree along with its resolved gitignore ruleset.
+type NodePlan struct {
+	Dir     string
+	Ruleset string // "" means global default
 }
 
 // SymlinkPlan describes a single symlink to be created during provision.
@@ -35,19 +42,20 @@ type SymlinkPlan struct {
 // Plan describes everything a workspace run needs.
 type Plan struct {
 	Deck             string
-	DeckDir   string   // <workspaces_root>/<workspace>
-	LaunchDir        string   // <workspaces_root>/launch  (shared across all workspaces)
-	LaunchFile       string   // <workspaces_root>/launch/<workspace>.code-workspace
-	Folders          []string // all tree node directories to create and scaffold, in tree order
+	Branch           string      // configured target branch for the deck ("" = use git remote default)
+	DeckDir          string      // <workspaces_root>/<workspace>
+	LaunchDir        string      // <workspaces_root>/launch  (shared across all workspaces)
+	LaunchFile       string      // <workspaces_root>/launch/<workspace>.code-workspace
+	Nodes            []NodePlan  // all tree node directories to create and scaffold, in tree order
 	Repos            []RepoPlan
 	Symlinks         []SymlinkPlan
-	WorkspaceFolders []string // node dirs with workspace_folder: true
+	WorkspaceFolders []string    // node dirs with show_in_workspace: true
 }
 
 // Build expands the full workspace tree into a flat Plan.
 // The caller must have already called Loaded.ValidateDeck.
 func Build(l *config.Loaded) (*Plan, error) {
-	root, err := config.ExpandRoot(l.Setup.Deck.Root)
+	root, err := config.ExpandRoot(l.Setup.Workspace.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -56,14 +64,15 @@ func Build(l *config.Loaded) (*Plan, error) {
 	launchFile := filepath.Join(launchDir, l.DeckName+".code-workspace")
 
 	plan := &Plan{
-		Deck: l.DeckName,
-		DeckDir: wsDir,
-		LaunchDir:    launchDir,
-		LaunchFile:   launchFile,
-		Folders:      []string{wsDir},
+		Deck:       l.DeckName,
+		Branch:     l.DeckFile.Branch,
+		DeckDir:    wsDir,
+		LaunchDir:  launchDir,
+		LaunchFile: launchFile,
+		Nodes:      []NodePlan{{Dir: wsDir, Ruleset: ""}},
 	}
 
-	if err := walkNode(l, wsDir, "", l.DeckFile.Deck, plan); err != nil {
+	if err := walkNode(l, wsDir, "", l.DeckFile.Deck, "", plan); err != nil {
 		return nil, err
 	}
 	return plan, nil
@@ -90,19 +99,25 @@ func AllWorkspaceFolders(l *config.Loaded) ([]string, error) {
 }
 
 // walkNode recursively walks a TreeNode, collecting folders, repos, symlinks, and
-// workspace_folder entries. nodeDir is the absolute path of the current node.
+// show_in_workspace entries. nodeDir is the absolute path of the current node.
 // nodePath is the relative display path from the workspace root.
-func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, plan *Plan) error {
-	if err := collectRepoRefs(l, nodeDir, nodePath, node.RepoRefs, plan); err != nil {
+// activeRuleset is the effective gitignore ruleset inherited from the parent node.
+func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, activeRuleset string, plan *Plan) error {
+	effective := activeRuleset
+	if node.GitignoreRuleset != "" {
+		effective = node.GitignoreRuleset
+	}
+
+	if err := collectRepoRefs(l, nodeDir, nodePath, node.RepoRefs, effective, plan); err != nil {
 		return err
 	}
-	if err := collectModuleRefs(l, nodeDir, nodePath, node.ModuleRefs, plan); err != nil {
+	if err := collectModuleRefs(l, nodeDir, nodePath, node.ModuleRefs, effective, plan); err != nil {
 		return err
 	}
 	if err := collectSymlinks(nodeDir, node.Symlinks, plan); err != nil {
 		return err
 	}
-	if node.WorkspaceFolder {
+	if node.ShowInWorkspace {
 		plan.WorkspaceFolders = append(plan.WorkspaceFolders, nodeDir)
 	}
 
@@ -114,8 +129,12 @@ func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, 
 		if nodePath != "" {
 			childPath = nodePath + "/" + childName
 		}
-		plan.Folders = append(plan.Folders, childDir)
-		if err := walkNode(l, childDir, childPath, child, plan); err != nil {
+		childRuleset := effective
+		if child.GitignoreRuleset != "" {
+			childRuleset = child.GitignoreRuleset
+		}
+		plan.Nodes = append(plan.Nodes, NodePlan{Dir: childDir, Ruleset: childRuleset})
+		if err := walkNode(l, childDir, childPath, child, effective, plan); err != nil {
 			return err
 		}
 	}
@@ -124,7 +143,7 @@ func walkNode(l *config.Loaded, nodeDir, nodePath string, node config.TreeNode, 
 
 // collectRepoRefs adds RepoPlans for all repos: entries at a given tree node.
 // Each entry is "org/repo"; repos land flat at nodeDir/repo.
-func collectRepoRefs(l *config.Loaded, nodeDir, nodePath string, repoRefs []string, plan *Plan) error {
+func collectRepoRefs(l *config.Loaded, nodeDir, nodePath string, repoRefs []string, ruleset string, plan *Plan) error {
 	for _, ref := range repoRefs {
 		parts := strings.SplitN(ref, "/", 2)
 		orgName, repoName := parts[0], parts[1]
@@ -134,14 +153,15 @@ func collectRepoRefs(l *config.Loaded, nodeDir, nodePath string, repoRefs []stri
 			return err
 		}
 		plan.Repos = append(plan.Repos, RepoPlan{
-			Deck: l.DeckName,
-			NodePath:   nodePath,
-			Module:     "",
-			Repo:       repoName,
-			URL:        url,
-			Branch:     branchFor(repoName, l.Setup),
-			Dest:       filepath.Join(nodeDir, repoName),
-			GitHubSlug: githubSlug(org, repoName),
+			Deck:             l.DeckName,
+			NodePath:         nodePath,
+			Module:           "",
+			Repo:             repoName,
+			URL:              url,
+			Branch:           l.DeckFile.Branch,
+			Dest:             filepath.Join(nodeDir, repoName),
+			GitHubSlug:       githubSlug(org, repoName),
+			GitignoreRuleset: ruleset,
 		})
 	}
 	return nil
@@ -149,7 +169,7 @@ func collectRepoRefs(l *config.Loaded, nodeDir, nodePath string, repoRefs []stri
 
 // collectModuleRefs adds RepoPlans for all modules: entries at a given tree node.
 // Module repos are looked up in l.Modules and land flat at nodeDir/repo.
-func collectModuleRefs(l *config.Loaded, nodeDir, nodePath string, moduleRefs []string, plan *Plan) error {
+func collectModuleRefs(l *config.Loaded, nodeDir, nodePath string, moduleRefs []string, ruleset string, plan *Plan) error {
 	for _, modName := range moduleRefs {
 		mod := l.Modules[modName]
 		org := l.Setup.Orgs[mod.Org]
@@ -159,14 +179,15 @@ func collectModuleRefs(l *config.Loaded, nodeDir, nodePath string, moduleRefs []
 				return err
 			}
 			plan.Repos = append(plan.Repos, RepoPlan{
-				Deck: l.DeckName,
-				NodePath:   nodePath,
-				Module:     modName,
-				Repo:       repo,
-				URL:        url,
-				Branch:     branchFor(repo, l.Setup),
-				Dest:       filepath.Join(nodeDir, repo),
-				GitHubSlug: githubSlug(org, repo),
+				Deck:             l.DeckName,
+				NodePath:         nodePath,
+				Module:           modName,
+				Repo:             repo,
+				URL:              url,
+				Branch:           l.DeckFile.Branch,
+				Dest:             filepath.Join(nodeDir, repo),
+				GitHubSlug:       githubSlug(org, repo),
+				GitignoreRuleset: ruleset,
 			})
 		}
 	}
@@ -245,13 +266,6 @@ func splitOrgURL(s string) (host, org string, ok bool) {
 		return "", "", false
 	}
 	return host, org, true
-}
-
-func branchFor(repo string, s config.Setup) string {
-	if b, ok := s.Branches[repo]; ok && b != "" {
-		return b
-	}
-	return s.DefaultBranch
 }
 
 func sortedKeys[V any](m map[string]V) []string {

@@ -56,6 +56,27 @@ func Regenerate(plan *resolve.Plan, l *config.Loaded) error {
 	}
 
 	f := file{Folders: make([]folder, 0, len(onDisk)+1)}
+
+	// Non-repo workspace folders (show_in_workspace: true with no repos).
+	for _, dir := range plan.WorkspaceFolders {
+		// Skip if it's already covered by a repo entry.
+		isRepo := false
+		for _, r := range onDisk {
+			if r.Dest == dir {
+				isRepo = true
+				break
+			}
+		}
+		if isRepo {
+			continue
+		}
+		rel, err := filepath.Rel(plan.LaunchDir, dir)
+		if err != nil {
+			return err
+		}
+		f.Folders = append(f.Folders, folder{Name: filepath.Base(dir), Path: rel})
+	}
+
 	for _, r := range onDisk {
 		rel, err := filepath.Rel(plan.LaunchDir, r.Dest)
 		if err != nil {

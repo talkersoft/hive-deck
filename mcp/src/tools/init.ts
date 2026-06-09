@@ -14,7 +14,7 @@ GitHub create-if-missing is always on — repos that don't exist on GitHub are c
       deck: z.string().describe("Deck name to initialize (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("init", deck);
+      const { ok: success, output } = runHv({ op: "init", deck });
       if (!success) {
         const hint = [
           "Init failed. Common causes:",

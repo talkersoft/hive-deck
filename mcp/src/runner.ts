@@ -7,10 +7,11 @@ export interface RunResult {
   output: string;
 }
 
-export function runHv(...args: string[]): RunResult {
-  const result = spawnSync(HV_BIN, args, {
+export function runHv(payload: object): RunResult {
+  const result = spawnSync(HV_BIN, [], {
+    input: JSON.stringify(payload),
     encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   const stdout = result.stdout ?? "";

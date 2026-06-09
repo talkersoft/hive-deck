@@ -1,0 +1,9 @@
+type: plan
+
+fragments:
+  - "@write-plan"
+  - "@write-deck"
+  - "@write-init"
+  - "@ship-plans"
+  - "@plan-overview"
+  - "@post-ship-reminder"

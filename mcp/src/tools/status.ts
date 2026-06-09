@@ -13,8 +13,7 @@ Dirty reasons include: uncommitted changes, unpushed commits, detached HEAD, sta
       deck: z.string().describe("Deck name to check (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const args = ["status", deck];
-      const { ok: success, output } = runHv(...args);
+      const { ok: success, output } = runHv({ op: "status", deck });
 
       if (!success) {
         return err(output, "hv_status failed to run. Check that the deck name is correct using hv_decks.");

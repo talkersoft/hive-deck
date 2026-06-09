@@ -15,9 +15,12 @@ var DefaultGitignoreEntries = []string{
 	"!README.md",
 }
 
+const hvManagedMarker = "# hv-managed"
+
 // EnsureGitignore writes any entries from the list that are not already present
 // in <dir>/.gitignore. Existing content is never modified — new entries are
-// appended under an hv-managed header. Idempotent.
+// appended under an hv-managed header. Idempotent: the header is never written
+// twice even if called repeatedly.
 func EnsureGitignore(dir string, entries []string) error {
 	if len(entries) == 0 {
 		return nil
@@ -25,10 +28,14 @@ func EnsureGitignore(dir string, entries []string) error {
 	path := filepath.Join(dir, ".gitignore")
 
 	existing := make(map[string]bool)
+	hasMarker := false
 	if f, err := os.Open(path); err == nil {
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, hvManagedMarker) {
+				hasMarker = true
+			}
 			if line != "" && !strings.HasPrefix(line, "#") {
 				existing[line] = true
 			}
@@ -53,8 +60,10 @@ func EnsureGitignore(dir string, entries []string) error {
 	}
 	defer f.Close()
 
-	if _, err := fmt.Fprintf(f, "\n# hv-managed (added by hv deck provision — idempotent)\n"); err != nil {
-		return err
+	if !hasMarker {
+		if _, err := fmt.Fprintf(f, "\n# hv-managed (added by hv deck provision — idempotent)\n"); err != nil {
+			return err
+		}
 	}
 	for _, e := range missing {
 		if _, err := fmt.Fprintln(f, e); err != nil {

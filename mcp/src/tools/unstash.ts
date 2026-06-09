@@ -11,7 +11,7 @@ Use after hv_next to bring work stashed on the previous branch onto the new one.
       deck: z.string().describe("Deck name (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("stash", "pop", deck);
+      const { ok: success, output } = runHv({ op: "stash_pop", deck });
       if (!success) {
         const hint = "Unstash failed — a stash conflict may have occurred. Check git status on the affected repos and resolve conflicts manually.";
         return err(output, hint);

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -89,11 +90,19 @@ func runProvision(plan *resolve.Plan, l *config.Loaded, opts Options) (err error
 	if err = ensureFolders(plan, l.Setup); err != nil {
 		return err
 	}
-	if err = claude.MaybeWrite(filepath.Dir(plan.DeckDir), l.Setup.ClaudeSettings); err != nil {
-		return err
+	if wp := l.Setup.Workspace.Profile; wp != "" {
+		if cs, ok := l.ClaudeProfiles[wp]; ok {
+			if err = claude.MaybeWrite(filepath.Dir(plan.DeckDir), cs); err != nil {
+				return err
+			}
+		}
 	}
-	if err = claude.MaybeWrite(plan.DeckDir, l.Setup.ClaudeSettings); err != nil {
-		return err
+	if dp := l.DeckFile.ClaudeProfile; dp != "" {
+		if cs, ok := l.ClaudeProfiles[dp]; ok {
+			if err = claude.MaybeWrite(plan.DeckDir, cs); err != nil {
+				return err
+			}
+		}
 	}
 	if err = applySymlinks(plan, opts.Out); err != nil {
 		return err
@@ -130,13 +139,13 @@ func runProvision(plan *resolve.Plan, l *config.Loaded, opts Options) (err error
 	return nil
 }
 
-// ensureFolders creates and scaffolds every directory in plan.Folders.
+// ensureFolders creates and scaffolds every directory in plan.Nodes.
 func ensureFolders(plan *resolve.Plan, setup config.Setup) error {
-	for _, dir := range plan.Folders {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	for _, node := range plan.Nodes {
+		if err := os.MkdirAll(node.Dir, 0o755); err != nil {
 			return err
 		}
-		if err := applyScaffold(dir, filepath.Base(dir), setup); err != nil {
+		if err := applyScaffold(node.Dir, filepath.Base(node.Dir), node.Ruleset, setup); err != nil {
 			return err
 		}
 	}
@@ -183,10 +192,7 @@ func restoreRepo(r resolve.RepoPlan, out io.Writer, setup config.Setup) error {
 	if err := git.RestoreInPlace(r.Dest, r.URL, r.Branch); err != nil {
 		return err
 	}
-	if err := applyRepoScaffold(r.Dest, setup); err != nil {
-		return err
-	}
-	return claude.MaybeWrite(r.Dest, setup.ClaudeSettings)
+	return applyRepoScaffold(r.Dest, r.GitignoreRuleset, setup)
 }
 
 // ── shared clone loop ────────────────────────────────────────────────────────
@@ -200,15 +206,25 @@ func cloneRepos(repos []resolve.RepoPlan, out io.Writer, tx *tx, setup config.Se
 		if err := os.MkdirAll(filepath.Dir(r.Dest), 0o755); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  [%s] clone %s @ %s -> %s\n", r.NodePath, r.URL, r.Branch, r.Dest)
-		if err := git.Clone(r.URL, r.Branch, r.Dest); err != nil {
+		cloneBranch := r.Branch
+		if !remoteBranchExists(r.URL, r.Branch) {
+			trueDefault := gh.DefaultBranch(r.GitHubSlug)
+			fmt.Fprintf(out, "  [%s] branch %q not found on remote — cloning from true default %q\n", r.NodePath, r.Branch, trueDefault)
+			cloneBranch = trueDefault
+		}
+		fmt.Fprintf(out, "  [%s] clone %s @ %s -> %s\n", r.NodePath, r.URL, cloneBranch, r.Dest)
+		if err := git.Clone(r.URL, cloneBranch, r.Dest); err != nil {
 			return err
+		}
+		if cloneBranch != r.Branch {
+			cmd := exec.Command("git", "checkout", "-b", r.Branch)
+			cmd.Dir = r.Dest
+			if out2, err2 := cmd.CombinedOutput(); err2 != nil {
+				return fmt.Errorf("create branch %q in %s: %s", r.Branch, r.Dest, strings.TrimSpace(string(out2)))
+			}
 		}
 		tx.record(r.Dest)
-		if err := applyRepoScaffold(r.Dest, setup); err != nil {
-			return err
-		}
-		if err := claude.MaybeWrite(r.Dest, setup.ClaudeSettings); err != nil {
+		if err := applyRepoScaffold(r.Dest, r.GitignoreRuleset, setup); err != nil {
 			return err
 		}
 	}
@@ -253,22 +269,35 @@ func (t *tx) rollback() {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// applyRepoScaffold writes missing gitignore entries into a repo's own
-// .gitignore, making the change visible in git status.
-func applyRepoScaffold(repoDir string, setup config.Setup) error {
-	entries := setup.Gitignore.Entries
-	if len(entries) == 0 {
-		entries = DefaultGitignoreEntries
+// resolveGitignoreEntries returns the gitignore entries for the given ruleset name.
+// If ruleset is set, it is looked up in setup.GitignoreRulesets.
+// Falls back to setup.Gitignore.Entries, then DefaultGitignoreEntries.
+func resolveGitignoreEntries(setup config.Setup, ruleset string) []string {
+	if ruleset != "" {
+		if rs, ok := setup.GitignoreRulesets[ruleset]; ok {
+			return rs.Entries
+		}
 	}
-	return EnsureGitignore(repoDir, entries)
+	if len(setup.Gitignore.Entries) > 0 {
+		return setup.Gitignore.Entries
+	}
+	return DefaultGitignoreEntries
 }
 
-func applyScaffold(dir, name string, setup config.Setup) error {
-	entries := setup.Gitignore.Entries
-	if len(entries) == 0 {
-		entries = DefaultGitignoreEntries
-	}
-	if err := EnsureGitignore(dir, entries); err != nil {
+// applyRepoScaffold writes missing gitignore entries into a repo's own
+// .gitignore, making the change visible in git status.
+func applyRepoScaffold(repoDir, ruleset string, setup config.Setup) error {
+	return EnsureGitignore(repoDir, resolveGitignoreEntries(setup, ruleset))
+}
+
+// ApplyRepoScaffold is the exported form of applyRepoScaffold, for use by
+// repo_add after cloning or initializing a single new repo.
+func ApplyRepoScaffold(repoDir, ruleset string, setup config.Setup) error {
+	return applyRepoScaffold(repoDir, ruleset, setup)
+}
+
+func applyScaffold(dir, name, ruleset string, setup config.Setup) error {
+	if err := EnsureGitignore(dir, resolveGitignoreEntries(setup, ruleset)); err != nil {
 		return err
 	}
 	if setup.Readme.Enabled {
@@ -286,4 +315,11 @@ func dirExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// remoteBranchExists reports whether <branch> exists on the remote via git ls-remote.
+func remoteBranchExists(url, branch string) bool {
+	cmd := exec.Command("git", "ls-remote", "--heads", url, "refs/heads/"+branch)
+	out, err := cmd.Output()
+	return err == nil && len(strings.TrimSpace(string(out))) > 0
 }

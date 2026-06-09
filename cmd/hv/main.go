@@ -3,29 +3,32 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/talkersoft/hive-deck/internal/branch"
-	"github.com/talkersoft/hive-deck/internal/checkout"
-	"github.com/talkersoft/hive-deck/internal/config"
-	"github.com/talkersoft/hive-deck/internal/github"
-	"github.com/talkersoft/hive-deck/internal/mcp"
-	"github.com/talkersoft/hive-deck/internal/namegen"
-	"github.com/talkersoft/hive-deck/internal/provision"
-	"github.com/talkersoft/hive-deck/internal/prune"
-	"github.com/talkersoft/hive-deck/internal/resolve"
-	"github.com/talkersoft/hive-deck/internal/ship"
-	"github.com/talkersoft/hive-deck/internal/stash"
-	"github.com/talkersoft/hive-deck/internal/sync"
-	"github.com/talkersoft/hive-deck/internal/teardown"
+	"github.com/talkersoft/hive-deck/ops"
 )
 
 func main() {
+	// If stdin is piped, treat the payload as a JSON dispatch call.
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		payload, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error: reading stdin:", err)
+			os.Exit(1)
+		}
+		out, err := ops.Dispatch(payload)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Print(out)
+		return
+	}
+
 	root := &cobra.Command{
 		Use:           "hv",
 		Short:         "hive — developer workspace and workflow tooling",
@@ -54,6 +57,8 @@ the same search order.`,
 		nextCmd(),
 		stashGroupCmd(),
 		mcpCmd(),
+		promoteCmd(),
+		planCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -83,29 +88,12 @@ If <branch> is omitted, a name is generated automatically.
 GitHub create-if-missing is always on.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			deck := args[0]
-			branchName := namegen.Generate()
+			in := ops.InitInput{Op: "init", Deck: args[0]}
 			if len(args) == 2 {
-				branchName = args[1]
+				in.Branch = args[1]
 			}
-			l, err := config.LoadDeck(deck)
-			if err != nil {
-				return err
-			}
-			if err := branch.PreFlightExisting(l, branchName); err != nil {
-				return err
-			}
-			if err := provision.Run(l, provision.Options{}); err != nil {
-				return err
-			}
-			if err := branch.CreateAll(l, branchName); err != nil {
-				return err
-			}
-			root, err := config.ExpandRoot(l.Setup.Deck.Root)
-			if err != nil {
-				return err
-			}
-			return mcp.Apply(root, l)
+			_, err := ops.RunInit(in)
+			return err
 		},
 	}
 }
@@ -125,43 +113,23 @@ Refuses to run if any repo is on the default branch — feature work only.
 Automatically sets upstream on first push so the branch is tracked on remote.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			if title == "" {
-				return fmt.Errorf("--title is required")
-			}
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			if err := ship.Run(l, ship.Options{
-				Message:             args[1],
-				Title:               title,
-				Body:                body,
-				DeleteBranchOnMerge: l.Setup.Ship.DeleteBranchOnMerge,
-				AutoMerge:           l.Setup.Ship.AutoMerge,
-			}); err != nil {
-				return err
-			}
-			if l.Setup.Ship.TeardownOnShip && l.Setup.Ship.AutoMerge {
-				fmt.Println()
-				return teardown.Run(l, teardown.Options{RequireMergedPR: false})
-			}
-			if l.Setup.Ship.RequireMergedPR && !l.Setup.Ship.AutoMerge {
-				fmt.Println("\nmerge-gate: PRs opened — merge them, then run hv next to transition")
-				return nil
-			}
-			nextBranch := namegen.Generate()
-			fmt.Println()
-			return checkout.Run(l, checkout.Options{
-				RequireMergedPR: false,
-				NextBranch:      nextBranch,
+			out, err := ops.RunShip(ops.ShipInput{
+				Op:      "ship",
+				Deck:    args[0],
+				Message: args[1],
+				Title:   title,
+				Body:    body,
 			})
+			if out != "" {
+				fmt.Print(out)
+			}
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "PR title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "PR body/description")
 	return cmd
 }
-
 
 func teardownCmd() *cobra.Command {
 	return &cobra.Command{
@@ -176,11 +144,8 @@ Refuses if any repo has tracked work that would be lost.
 There is no --force or nuke mode. Use ` + "`rm -rf`" + ` for destructive wipes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			return teardown.Run(l, teardown.Options{RequireMergedPR: l.Setup.Ship.RequireMergedPR})
+			_, err := ops.RunTeardown(ops.TeardownInput{Op: "teardown", Deck: args[0]})
+			return err
 		},
 	}
 }
@@ -194,11 +159,8 @@ runs git pull on each one. Aborts before touching anything if any repo
 has uncommitted changes, unpushed commits, or stash entries.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			return sync.Run(l, sync.Options{})
+			_, err := ops.RunSync(ops.SyncInput{Op: "sync", Deck: args[0]})
+			return err
 		},
 	}
 }
@@ -218,11 +180,8 @@ in the deck YAML. It runs in three steps:
 Use --dry-run to preview what would be removed without removing anything.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			return prune.Run(l, prune.Options{DryRun: dryRun})
+			_, err := ops.RunPrune(ops.PruneInput{Op: "prune", Deck: args[0], DryRun: dryRun})
+			return err
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be removed without removing anything")
@@ -235,11 +194,11 @@ func statusCmd() *cobra.Command {
 		Short: "Report git state of every repo in the deck",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
+			out, err := ops.RunStatus(ops.StatusInput{Op: "status", Deck: args[0]})
+			if out != "" {
+				fmt.Print(out)
 			}
-			return teardown.Status(l, os.Stdout)
+			return err
 		},
 	}
 }
@@ -259,20 +218,11 @@ func listReposCmd() *cobra.Command {
 		Short: "List every repo declared by the deck with provisioned state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
+			out, err := ops.RunListRepos(ops.ListReposInput{Op: "list_repos", Deck: args[0]})
+			if out != "" {
+				fmt.Print(out)
 			}
-			root, err := config.ExpandRoot(l.Setup.Deck.Root)
-			if err != nil {
-				return err
-			}
-			wsDir := filepath.Join(root, l.DeckName)
-			if err := l.ValidateDeck(); err != nil {
-				return err
-			}
-			fmt.Printf("%-40s %-25s %s\n", "DEST", "MODULE", "PROVISIONED")
-			return walkListNode(l.DeckFile.Deck, wsDir, "", l)
+			return err
 		},
 	}
 }
@@ -283,33 +233,11 @@ func listPullsCmd() *cobra.Command {
 		Short: "Show all open pull requests across every provisioned repo in the deck",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
+			out, err := ops.RunListPulls(ops.ListPullsInput{Op: "list_pulls", Deck: args[0]})
+			if out != "" {
+				fmt.Print(out)
 			}
-			if err := l.ValidateDeck(); err != nil {
-				return err
-			}
-			plan, err := resolve.Build(l)
-			if err != nil {
-				return err
-			}
-			total := 0
-			for _, repo := range plan.Repos {
-				if fi, serr := os.Stat(repo.Dest); serr != nil || !fi.IsDir() {
-					continue
-				}
-				prs := github.ListOpenPRs(repo.Dest)
-				for _, pr := range prs {
-					fmt.Printf("#%-4d %-30s %s\n", pr.Number, repo.Repo, pr.URL)
-					fmt.Printf("      branch: %-28s %s\n", pr.Branch, pr.Title)
-					total++
-				}
-			}
-			if total == 0 {
-				fmt.Println("no open pull requests")
-			}
-			return nil
+			return err
 		},
 	}
 }
@@ -317,73 +245,16 @@ func listPullsCmd() *cobra.Command {
 func listDecksCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "decks",
-		Short: "List every deck file (*.yaml) in ~/.hv/",
+		Short: "List every deck file (*.yaml) in ~/.hv/decks/",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			home, _, err := config.LoadSetup()
-			if err != nil {
-				return err
+			out, err := ops.RunDecks(ops.DecksInput{Op: "decks"})
+			if out != "" {
+				fmt.Print(out)
 			}
-			matches, err := filepath.Glob(filepath.Join(home, config.ConfigDir, "*.yaml"))
-			if err != nil {
-				return err
-			}
-			sort.Strings(matches)
-			for _, m := range matches {
-				base := filepath.Base(m)
-				if base == config.SetupFile || base == config.ModulesFile || base == config.MCPsFile || strings.HasSuffix(base, ".example") {
-					continue
-				}
-				fmt.Println(strings.TrimSuffix(base, ".yaml"))
-			}
-			return nil
+			return err
 		},
 	}
-}
-
-func walkListNode(node config.TreeNode, nodeDir, nodePath string, l *config.Loaded) error {
-	wsPrefix := filepath.Join(func() string {
-		r, _ := config.ExpandRoot(l.Setup.Deck.Root)
-		return r
-	}(), l.DeckName) + "/"
-
-	for _, ref := range node.RepoRefs {
-		parts := strings.SplitN(ref, "/", 2)
-		repoName := parts[1]
-		dest := filepath.Join(nodeDir, repoName)
-		prov := "no"
-		if fi, err := os.Stat(dest); err == nil && fi.IsDir() {
-			prov = "yes"
-		}
-		rel := strings.TrimPrefix(dest, wsPrefix)
-		fmt.Printf("%-40s %-25s %s\n", rel, ref, prov)
-	}
-
-	for _, modName := range node.ModuleRefs {
-		mod := l.Modules[modName]
-		for _, repo := range mod.Repos {
-			dest := filepath.Join(nodeDir, repo)
-			prov := "no"
-			if fi, err := os.Stat(dest); err == nil && fi.IsDir() {
-				prov = "yes"
-			}
-			rel := strings.TrimPrefix(dest, wsPrefix)
-			fmt.Printf("%-40s %-25s %s\n", rel, modName, prov)
-		}
-	}
-
-	childNames := sortedStringKeys(node.Children)
-	for _, childName := range childNames {
-		child := node.Children[childName]
-		childPath := childName
-		if nodePath != "" {
-			childPath = nodePath + "/" + childName
-		}
-		if err := walkListNode(child, filepath.Join(nodeDir, childName), childPath, l); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func nextCmd() *cobra.Command {
@@ -398,18 +269,12 @@ Refuses if <branch> equals the default branch name (main/master).
 If <branch> is omitted, a name is generated automatically.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			nextBranch := namegen.Generate()
+			in := ops.NextInput{Op: "next", Deck: args[0]}
 			if len(args) == 2 {
-				nextBranch = args[1]
+				in.Branch = args[1]
 			}
-			return checkout.Run(l, checkout.Options{
-				RequireMergedPR: l.Setup.Ship.RequireMergedPR,
-				NextBranch:      nextBranch,
-			})
+			_, err := ops.RunNext(in)
+			return err
 		},
 	}
 }
@@ -433,11 +298,8 @@ Every dirty repo must have a merged or closed PR — otherwise use hv ship.
 After stashing: run hv next to transition, then hv stash pop to restore.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			return stash.Push(l)
+			_, err := ops.RunStashPush(ops.StashInput{Op: "stash_push", Deck: args[0]})
+			return err
 		},
 	}
 }
@@ -449,11 +311,8 @@ func stashPopCmd() *cobra.Command {
 		Long:  `Runs git stash pop on every repo that has a stash entry. Use after hv next.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			return stash.Pop(l)
+			_, err := ops.RunStashPop(ops.StashInput{Op: "stash_pop", Deck: args[0]})
+			return err
 		},
 	}
 }
@@ -471,24 +330,78 @@ Requires mcp_manager.enabled: true in config.yaml.
 Also runs automatically at the end of hv init when enabled.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			l, err := config.LoadDeck(args[0])
-			if err != nil {
-				return err
-			}
-			root, err := config.ExpandRoot(l.Setup.Deck.Root)
-			if err != nil {
-				return err
-			}
-			return mcp.Apply(root, l)
+			_, err := ops.RunMcp(ops.McpInput{Op: "mcp", Deck: args[0]})
+			return err
 		},
 	}
 }
 
-func sortedStringKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+func promoteCmd() *cobra.Command {
+	var listFlag bool
+	cmd := &cobra.Command{
+		Use:   "promote <deck> <workflowName>",
+		Short: "Promote a reviewed plan into an executable orchestration workflow",
+		Long: `Promotes a reviewed plan into an executable orchestration workflow.
+
+  hv promote <deck> <workflowName>   Run named workflow extension for the deck
+  hv promote --list <deck>           List available workflows for the deck`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if listFlag {
+				return cobra.ExactArgs(1)(cmd, args)
+			}
+			return cobra.ExactArgs(2)(cmd, args)
+		},
+		RunE: func(_ *cobra.Command, args []string) error {
+			deck := args[0]
+			workflowName := ""
+			if len(args) == 2 {
+				workflowName = args[1]
+			}
+			out, err := ops.RunWorkflow(ops.WorkflowInput{
+				Op: "orchestrate", Type: "workflow", Deck: deck, WorkflowName: workflowName, List: listFlag,
+			})
+			if out != "" {
+				fmt.Print(out)
+			}
+			return err
+		},
 	}
-	sort.Strings(out)
-	return out
+	cmd.Flags().BoolVar(&listFlag, "list", false, "List available workflows for the deck")
+	return cmd
 }
+
+func planCmd() *cobra.Command {
+	var listFlag bool
+	cmd := &cobra.Command{
+		Use:   "plan <deck> <workflowName>",
+		Short: "Assemble and print plan instructions",
+		Long: `Assembles plan instructions for the given deck and prints them to stdout.
+
+  hv plan <deck> <workflowName>   Run named plan workflow for the deck
+  hv plan --list <deck>           List available plan workflows for the deck`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if listFlag {
+				return cobra.ExactArgs(1)(cmd, args)
+			}
+			return cobra.ExactArgs(2)(cmd, args)
+		},
+		RunE: func(_ *cobra.Command, args []string) error {
+			deck := args[0]
+			workflowName := ""
+			if len(args) == 2 {
+				workflowName = args[1]
+			}
+			out, err := ops.RunWorkflow(ops.WorkflowInput{
+				Op: "orchestrate", Type: "plan", Deck: deck, WorkflowName: workflowName, List: listFlag,
+			})
+			if out != "" {
+				fmt.Print(out)
+			}
+			return err
+		},
+	}
+	cmd.Flags().BoolVar(&listFlag, "list", false, "List available plan workflows for the deck")
+	return cmd
+}
+
+

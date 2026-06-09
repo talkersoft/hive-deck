@@ -14,7 +14,7 @@ Note: hv_ship already auto-transitions after a successful merge — only call hv
       deck: z.string().describe("Deck name (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("next", deck);
+      const { ok: success, output } = runHv({ op: "next", deck });
 
       if (!success) {
         const hint = [

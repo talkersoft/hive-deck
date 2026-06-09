@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "hive-deck Operations Contract",
+  "description": "JSON input schema for all hv operations dispatched via stdin",
+  "oneOf": [
+    {
+      "title": "status",
+      "properties": {
+        "op":   { "const": "status" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "init",
+      "properties": {
+        "op":     { "const": "init" },
+        "deck":   { "type": "string" },
+        "branch": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "ship",
+      "properties": {
+        "op":      { "const": "ship" },
+        "deck":    { "type": "string" },
+        "message": { "type": "string" },
+        "title":   { "type": "string" },
+        "body":    { "type": "string" }
+      },
+      "required": ["op", "deck", "message", "title"],
+      "additionalProperties": false
+    },
+    {
+      "title": "sync",
+      "properties": {
+        "op":   { "const": "sync" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "prune",
+      "properties": {
+        "op":      { "const": "prune" },
+        "deck":    { "type": "string" },
+        "dry_run": { "type": "boolean" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "next",
+      "properties": {
+        "op":     { "const": "next" },
+        "deck":   { "type": "string" },
+        "branch": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "stash_push",
+      "properties": {
+        "op":   { "const": "stash_push" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "stash_pop",
+      "properties": {
+        "op":   { "const": "stash_pop" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "teardown",
+      "properties": {
+        "op":   { "const": "teardown" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "workflow",
+      "properties": {
+        "op":   { "const": "workflow" },
+        "deck": { "type": "string" },
+        "name": { "type": "string" },
+        "list": { "type": "boolean" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "decks",
+      "properties": {
+        "op": { "const": "decks" }
+      },
+      "required": ["op"],
+      "additionalProperties": false
+    },
+    {
+      "title": "list_repos",
+      "properties": {
+        "op":   { "const": "list_repos" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "list_pulls",
+      "properties": {
+        "op":   { "const": "list_pulls" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "mcp",
+      "properties": {
+        "op":   { "const": "mcp" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    },
+    {
+      "title": "await_merge",
+      "properties": {
+        "op":   { "const": "await_merge" },
+        "deck": { "type": "string" }
+      },
+      "required": ["op", "deck"],
+      "additionalProperties": false
+    }
+  ]
+}

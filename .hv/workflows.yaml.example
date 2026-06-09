@@ -1,0 +1,23 @@
+# Workflow definitions — copy to workflows.yaml (gitignored) and edit.
+# Maps deck names to a workflow extension name and an ordered list of fragment files.
+# Fragments are markdown files loaded from .hv/workflows/ (or the builtin defaults).
+#
+# The extension name must match a YAML file in your workflow-configuration repo:
+#   decks/workflows/workflow/<deck>/<extension-name>.yaml
+
+# <deck-name>:
+#   repo: <your-org>/workflow-configuration    # repo where .yaml extensions live
+#   steps:
+#     - workflows/status-check.md
+#     - workflows/folder-structure.md
+#     - workflows/write-init.md
+#     - workflows/write-deck.md
+#     - workflows/write-orch.md
+#     - workflows/write-task-0000.md
+#     - workflows/write-test-0000.md
+#     - workflows/write-task.md
+#     - workflows/write-test.md
+#     - workflows/write-fix.md
+#     - workflows/write-result-lessons.md
+#     - workflows/ship-plans.md
+#     - workflows/key-rules.md

@@ -44,5 +44,5 @@ export function activeProfileName(): string {
   if (argIndex !== -1 && process.argv[argIndex + 1]) {
     return process.argv[argIndex + 1];
   }
-  return process.env.MCP_PROFILE ?? "hv.deck.pro";
+  return process.env.MCP_PROFILE ?? "workflows";
 }

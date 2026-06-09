@@ -32,9 +32,9 @@ func Run(l *config.Loaded, opts Options) error {
 	}
 
 	type repoMeta struct {
-		r             resolve.RepoPlan
-		branch        string
-		defaultBranch string
+		r            resolve.RepoPlan
+		branch       string
+		targetBranch string
 	}
 
 	var repos []repoMeta
@@ -46,7 +46,11 @@ func Run(l *config.Loaded, opts Options) error {
 		if err != nil {
 			continue
 		}
-		repos = append(repos, repoMeta{r, branch, defaultBranch(r.Dest)})
+		tb := plan.Branch
+		if tb == "" {
+			tb = defaultBranch(r.Dest)
+		}
+		repos = append(repos, repoMeta{r, branch, tb})
 	}
 
 	if len(repos) == 0 {
@@ -55,15 +59,15 @@ func Run(l *config.Loaded, opts Options) error {
 
 	// Pre-flight: refuse to ship from default branch or onto a branch that
 	// already has a PR (open or merged). Once a PR exists, the branch is done —
-	// merge it and run hv_default to start fresh.
+	// merge it and run hv_next to start fresh.
 	type problem struct {
 		repo   string
 		reason string
 	}
 	var problems []problem
 	for _, rm := range repos {
-		if rm.branch == rm.defaultBranch {
-			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("on default branch %q — create a feature branch before shipping", rm.defaultBranch)})
+		if rm.branch == rm.targetBranch {
+			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("on default branch %q — create a feature branch before shipping", rm.targetBranch)})
 			continue
 		}
 		if rm.r.GitHubSlug == "" {
@@ -72,11 +76,11 @@ func Run(l *config.Loaded, opts Options) error {
 		info := github.GetPRInfo(rm.r.Dest, rm.branch)
 		switch info.State {
 		case "OPEN":
-			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR already open: %s — merge it, then run hv_default to start fresh", info.URL)})
+			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR already open: %s — merge it, then run hv_next to start fresh", info.URL)})
 		case "MERGED":
-			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR already merged: %s — run hv_default to reset to main", info.URL)})
+			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR already merged: %s — run hv_next to start fresh", info.URL)})
 		case "CLOSED":
-			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR was closed: %s — run hv_default and open a new branch", info.URL)})
+			problems = append(problems, problem{rm.r.Repo, fmt.Sprintf("PR was closed: %s — run hv_next to open a new branch", info.URL)})
 		}
 	}
 	if len(problems) > 0 {
@@ -118,14 +122,14 @@ func Run(l *config.Loaded, opts Options) error {
 	fmt.Println()
 	var created []string
 	for _, rm := range repos {
-		if commitsAhead(rm.r.Dest, "origin/"+rm.defaultBranch) == 0 {
+		if commitsAhead(rm.r.Dest, "origin/"+rm.targetBranch) == 0 {
 			continue
 		}
 		if rm.r.GitHubSlug == "" {
 			fmt.Printf("  skip    %-30s no GitHub remote\n", rm.r.Repo)
 			continue
 		}
-		url, err := createPR(rm.r.Dest, rm.defaultBranch, opts.Title, opts.Body)
+		url, err := createPR(rm.r.Dest, rm.targetBranch, opts.Title, opts.Body)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  error   %-30s %v\n", rm.r.Repo, err)
 			continue

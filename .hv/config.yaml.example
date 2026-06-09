@@ -15,10 +15,10 @@ orgs:                          # one entry per GitHub org you clone from
   #   protocol: ssh
 
 # Default branch applied to every cloned repo unless overridden below.
-default_branch: main
+default_target_branch: main
 
 # Per-repo branch overrides — only list repos that differ from default_branch.
-branches: {}
+target_branches: {}
   # <repo-name>: <branch-name>
 
 # Optional: write a .gitignore at each workspace and system directory.
@@ -56,24 +56,32 @@ ship:
   teardown_on_ship: false
 
 # Optional: drop a .claude/settings.local.json into every cloned repo so Claude
-# Code picks up project-local permissions without per-repo setup. Existing
-# files are never overwritten — hv only writes when the file is absent.
+# Code picks up project-local permissions without per-repo setup.
+# The `permissions` subtree mirrors Claude Code's settings.local.json schema exactly.
 claude_settings:
   enabled: false               # flip to true to enable per-repo provisioning
-  allow:                       # permission patterns merged into permissions.allow (existing entries preserved)
-    - "*"
-    - "Bash(*)"
-    - "Edit(*)"
-    - "Write(*)"
-    - "Read(*)"
-    - "Glob(*)"
-    - "Grep(*)"
-    - "WebFetch(*)"
-    - "WebSearch(*)"
-  default_mode: bypassPermissions    # optional; "bypassPermissions" if omitted
+  mode: overwrite              # "overwrite" (default) | "skip" | "merge"
+  permissions:
+    allow:
+      # - "Bash(*)"
+      - "Edit(*)"
+      - "Write(*)"
+      - "Read(*)"
+      - "Glob(*)"
+      - "Grep(*)"
+      - "WebFetch(*)"
+      - "WebSearch(*)"
+    # defaultMode: bypassPermissions   # uncomment to bypass all Claude permission prompts
 
 # Optional: write MCP server config to {decks_root}/.claude/settings.json at init time.
 # MCP definitions live in mcps.yaml (same search order as this file).
 # Each deck declares which MCPs it needs via a top-level `mcps:` list.
+# Optional: override where workflow execution files (ORCH.md, tasks, tests) and
+# plan files (PLAN.md) are stored. Defaults shown below — omit to use defaults.
+# {{DeckRoot}} expands to deck.root + deck name (e.g. ~/workspace/hive-deck-pro).
+# plan_folder: "{{DeckRoot}}/planning/workflow-plans"
+# exec_folder: "{{DeckRoot}}/planning/workflow-exec"
+
 mcp_manager:
-  enabled: false   # flip to true to enable MCP config writing on hv init
+  enabled: false        # flip to true to enable MCP config writing on hv init
+  root_mcp_mode: overwrite  # overwrite | merge — overwrite replaces root .mcp.json fresh each run; merge accumulates across decks

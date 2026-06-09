@@ -13,7 +13,7 @@ After stashing: call hv_next to transition to a new branch, then hv_unstash to r
       deck: z.string().describe("Deck name (e.g. 'cloud-manager'). Use hv_decks to list available decks."),
     },
     async ({ deck }) => {
-      const { ok: success, output } = runHv("stash", "push", deck);
+      const { ok: success, output } = runHv({ op: "stash_push", deck });
       if (!success) {
         const hint = [
           "Stash failed. Common causes:",

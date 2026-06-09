@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+// DefaultBranch returns the true GitHub default branch for a repo slug
+// (e.g. "talkersoft-com/vmorchestrator"). Falls back to "main" on any error.
+func DefaultBranch(slug string) string {
+	cmd := exec.Command("gh", "repo", "view", slug,
+		"--json", "defaultBranchRef",
+		"--jq", ".defaultBranchRef.name")
+	out, err := cmd.Output()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return "main"
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // EnsureAvailable returns an error if the gh CLI is not on PATH.
 // Call this once at the start of any run that may need github operations.
 func EnsureAvailable() error {
