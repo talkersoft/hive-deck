@@ -2,8 +2,8 @@
   <img src="assets/buzzinism.png" alt="Hive Deck" width="400" />
   <br/>
   <h1 align="center">Hive Deck</h1>
-  <h3 align="center"><em>"Deterministic multi-repo orchestration for agentic AI."</em></h3>
-  <p align="center">Manage hundreds of repos as one. Pick your interface.</p>
+  <h3 align="center"><em>"Deterministic multi-repo orchestration for agentic AI workflows."</em></h3>
+  <p align="center">Manage hundreds of repos as one. MCP, CLI, or Go — pick your interface.</p>
 </p>
 
 ---
@@ -53,8 +53,15 @@
 <td>🧹 <strong>Teardown</strong></td><td><small>Surgically remove tracked files and <code>.git/</code> — untracked files preserved</small></td>
 <td>✂️ <strong>Prune</strong></td><td><small>Remove on-disk repos no longer declared in the deck</small></td>
 </tr>
+<tr>
+<td>➕ <strong>Repo add</strong></td><td><small>Add a new repo to a deck — creates on GitHub, clones, and wires up automatically</small></td>
+<td>⏳ <strong>Await merge</strong></td><td><small>Poll until all open PRs on the deck are merged, then auto-transition</small></td>
+</tr>
+<tr>
+<td>📋 <strong>Workflows</strong></td><td><small>Structured plan → orchestrate → execute loop with file-based task scaffolding</small></td>
+<td></td><td></td>
+</tr>
 </table>
-
 
 ---
 
@@ -102,9 +109,9 @@ Add the MCP server to `~/.claude.json`:
   "mcpServers": {
     "hive-deck-mcp": {
       "command": "node",
-      "args": ["/path/to/hive-deck-pro/mcp/dist/index.js"],
+      "args": ["/path/to/hive-deck/mcp/dist/index.js"],
       "env": {
-        "MCP_PROFILE": "hv.deck.pro"
+        "MCP_PROFILE": "workflows"
       }
     }
   }
@@ -119,9 +126,8 @@ Control which tools are exposed via `MCP_PROFILE`:
 
 | Profile | Tools |
 |---|---|
-| `hv.deck` | status, list, decks |
-| `hv.deck.operator` | + init, ship, sync, next, stash, unstash, list-pulls |
-| `hv.deck.pro` | + teardown, prune, mcp |
+| `decks` | All deck tools: status, list, decks, init, ship, sync, next, stash, unstash, list-pulls, teardown, prune, mcp, await-merge, repo-list, repo-add |
+| `workflows` | Everything in `decks` + workflow tools: hv_plan, hv_promote, hv_orchestrate_create, hv_orchestrate_list, hv_orchestrate_run |
 
 ---
 
@@ -166,6 +172,77 @@ hv_teardown       deck: "my-saas"
 
 ---
 
+## Workflows
+
+Workflows are a structured plan → orchestrate → execute loop. Instead of giving the AI a blank prompt, workflows produce a file-based scaffold — a PLAN.md, an ORCH.md, and numbered task files — that the agent works through step by step. Every task is written before it runs, every result is written before the next task starts.
+
+### The three-step loop
+
+```
+hv_plan           deck: "my-saas"
+                  requirements: "Add webhook support to the billing service..."
+
+  → assembles planning scaffold, agent writes PLAN.md
+  → PLAN.md is saved to planning/workflow-plans/<deck>/<branch>/PLAN.md
+
+hv_promote        deck: "my-saas"
+                  name: "my-saas-feature"
+                  plan_paths: ["/path/to/PLAN.md"]
+
+  → assembles orchestration scaffold from the plan
+  → agent writes ORCH.md + task files to planning/workflow-exec/<deck>/<branch>/
+
+/loop             → user runs this to begin execution
+                  → agent works through tasks one by one
+                  → each task: write result → write test → ship → next
+```
+
+### Workflow fragments
+
+Workflow behaviour is controlled by **fragment files** — markdown snippets assembled into the prompt at planning and orchestration time. The built-in fragments live in the binary; you can override or extend them from `.hv/workflows/`.
+
+```
+.hv/workflows/
+  key-rules.md            # enforced rules for every workflow run
+  status-check.md         # task 0000 — always hv_status + hv_init/hv_next
+  folder-structure.md     # how workflow-exec and workflow-plans are laid out
+  write-init.md           # how to write ORCH.md and task 0000
+  write-task.md           # how to write a task file
+  write-test.md           # how to write a test file
+  write-result-lessons.md # how to write results and retro
+  write-deck.md           # how to write deck.md
+  write-orch.md           # how to write ORCH.md
+  write-fix.md            # how to write a fix file after a failed test
+  ship-plans.md           # shipping rules
+```
+
+### workflows.yaml
+
+Map deck names to workflow extensions and fragment lists. Copy `.hv/workflows.yaml.example` to `.hv/workflows.yaml` and edit:
+
+```yaml
+my-saas:
+  repo: your-org/workflow-configuration   # where extension .yaml files live
+  steps:
+    - workflows/status-check.md
+    - workflows/folder-structure.md
+    - workflows/write-init.md
+    - workflows/write-task.md
+    - workflows/write-test.md
+    - workflows/write-result-lessons.md
+    - workflows/ship-plans.md
+    - workflows/key-rules.md
+```
+
+### Key rules (enforced by the workflow scaffold)
+
+- Results and retro are written **before** `hv_ship` — never after
+- Fix files are written **before** retrying a failed test — never silently re-run
+- Task 0000 is always `hv_status` + `hv_init`/`hv_next` — never skip it
+- All deck operations use MCP tools (`hv_status`, `hv_init`, `hv_next`, `hv_ship`) — never raw `git`
+
+---
+
 ## Concepts
 
 - **deck** — a named workspace folder containing a tree of repos
@@ -181,11 +258,15 @@ On disk: `<decks_root>/<deck>/<node>/.../<repo>/`
 ### Layout
 
 ```
-.hv/                          # config dir — gitignored except *.example
+.hv/                          # config dir — gitignored except examples and workflow fragments
 .hv/config.yaml               # per-machine: decks_root, orgs, branch defaults
 .hv/modules.yaml              # named bundles of repos shared across decks
-.hv/<name>.yaml               # one deck file per workspace (e.g. cloud-manager.yaml)
+.hv/<name>.yaml               # one deck file per workspace (e.g. my-saas.yaml)
+.hv/workflows.yaml            # workflow definitions per deck (gitignored — see example)
+.hv/workflows/                # fragment overrides (committed — generic markdown)
 .hv/config.yaml.example       # committed template
+.hv/mcps.yaml.example         # committed template
+.hv/workflows.yaml.example    # committed template
 ```
 
 **Hive Deck never writes to any YAML file.** All YAML is read-only input.
@@ -255,7 +336,7 @@ The deck name comes from the filename stem: `my-saas.yaml` → deck folder `my-s
 
 ## CLI Reference
 
-> The `hv` CLI is the engine behind the MCP tools. Use it directly for scripting or CI. For agentic workflows, prefer the MCP interface. Full syntax is in the Commands table above.
+> The `hv` CLI is the engine behind the MCP tools. Use it directly for scripting or CI. For agentic workflows, prefer the MCP interface.
 
 ### gh setup for headless / CI environments
 
