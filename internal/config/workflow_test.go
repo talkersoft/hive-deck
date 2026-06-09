@@ -104,9 +104,9 @@ func TestDetectCycles_Clean(t *testing.T) {
 
 func TestLoadFragment_StripAt(t *testing.T) {
 	root := makeRoot(t, map[string]string{
-		"fragments/status-check.md": "# Status Check\n",
+		"decks/workflows/workflow/fragments/status-check.md": "# Status Check\n",
 	})
-	content, err := LoadFragment(root, "@status-check")
+	content, err := LoadFragmentWithFallback(root, "@status-check", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestLoadFragment_StripAt(t *testing.T) {
 func TestLoadFragment_NotFound(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "fragments"), 0755)
-	_, err := LoadFragment(root, "@missing")
+	_, err := LoadFragmentWithFallback(root, "@missing", "", nil)
 	if err == nil {
 		t.Fatal("expected error for missing fragment, got nil")
 	}

@@ -8,11 +8,11 @@ import (
 
 func TestRenderDotSyntax(t *testing.T) {
 	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "fragments"), 0755)
-	os.WriteFile(filepath.Join(root, "fragments", "greet.md"), []byte("deck={{.Deck}} mode={{.PRMode}}\n"), 0644)
+	os.MkdirAll(filepath.Join(root, "decks", "workflows", "workflow", "fragments"), 0755)
+	os.WriteFile(filepath.Join(root, "decks", "workflows", "workflow", "fragments", "greet.md"), []byte("deck={{.Deck}} mode={{.PRMode}}\n"), 0644)
 
 	data := TemplateData{Deck: "my-deck", PRMode: "await_merge"}
-	got, err := Render(root, []string{"@greet"}, data, nil)
+	got, err := Render(root, "", []string{"@greet"}, data, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -24,15 +24,15 @@ func TestRenderDotSyntax(t *testing.T) {
 
 func TestRenderConditional(t *testing.T) {
 	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "fragments"), 0755)
-	os.WriteFile(filepath.Join(root, "fragments", "cond.md"), []byte(`{{if eq .PRMode "await_merge"}}polling{{else}}manual{{end}}`), 0644)
+	os.MkdirAll(filepath.Join(root, "decks", "workflows", "workflow", "fragments"), 0755)
+	os.WriteFile(filepath.Join(root, "decks", "workflows", "workflow", "fragments", "cond.md"), []byte(`{{if eq .PRMode "await_merge"}}polling{{else}}manual{{end}}`), 0644)
 
 	for _, tc := range []struct{ mode, want string }{
 		{"await_merge", "polling"},
 		{"manual", "manual"},
 	} {
 		data := TemplateData{PRMode: tc.mode}
-		got, err := Render(root, []string{"@cond"}, data, nil)
+		got, err := Render(root, "", []string{"@cond"}, data, nil)
 		if err != nil {
 			t.Fatalf("mode=%s unexpected error: %v", tc.mode, err)
 		}
