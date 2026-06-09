@@ -1,9 +1,7 @@
 # Per-machine config and personal decks live in .hv/ — never committed.
-# Example templates and generic workflow fragments ARE committed.
+# Only example templates are committed.
 .hv/*
 !.hv/*.example
-!.hv/workflows/
-!.hv/workflows/**
 
 # MCP build artifacts
 mcp/node_modules/
