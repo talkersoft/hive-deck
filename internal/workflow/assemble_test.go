@@ -136,16 +136,16 @@ func TestAssemble_CircularRef(t *testing.T) {
 
 func TestRender_Tokens(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "fragments"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "decks", "workflows", "workflow", "fragments"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(root, "fragments", "hello.md"), []byte("deck={{.Deck}} folder={{.ExecFolder}}\n"), 0644)
+	os.WriteFile(filepath.Join(root, "decks", "workflows", "workflow", "fragments", "hello.md"), []byte("deck={{.Deck}} folder={{.ExecFolder}}\n"), 0644)
 
 	data := TemplateData{
 		Deck:       "my-deck",
 		ExecFolder: "/tmp/wf",
 	}
-	result, err := Render(root, []string{"@hello"}, data, nil)
+	result, err := Render(root, "", []string{"@hello"}, data, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
